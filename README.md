@@ -1,9 +1,9 @@
-# Space Invaders: Classic Arcade Edition (V.1)
+# Space Invaders: Classic Arcade Edition (V.1.2)
 ### A Project for **INTEGRATIVE PROGRAMMING TECHNOLOGY**
 
-Welcome to **Space Invaders: Classic Arcade Edition (V.1)**—a premium, fully-featured retro space shooter built as a project for **Integrative Programming Technology**.
+Welcome to **Space Invaders: Classic Arcade Edition (V.1.2)**—a premium, fully-featured retro space shooter built as a project for **Integrative Programming Technology**.
 
-> **Note:** This is **Version 1.0 (V.1)** of the game. Additional changes, optimizations, and updates will be made later as development continues.
+> **Note:** This is **Version 1.2 (V.1.2)** of the game. Additional changes, optimizations, and updates will be made later as development continues.
 
 ---
 
@@ -25,6 +25,10 @@ Welcome to **Space Invaders: Classic Arcade Edition (V.1)**—a premium, fully-f
   - Monospace font styling (`Consolas`) for terminal-style layouts.
   - Customized pixel-art power-up drop icons (Shield 🛡️, Multi-shot ⚡, Heart ♥) replacing flat text characters.
 
+- **📱 Fluid Responsive Design (NEW in v1.2):**
+  - Fully dynamic and responsive fluid layout replacing standard letterboxed scaling.
+  - Drag and resize the window to any resolution or aspect ratio (e.g., narrow mobile views), and the gameplay area, UI, and enemy spawning grid adapt automatically in real-time.
+
 - **🔊 Programmatic Retro Audio:**
   - Real-time wave-synthesized sound effects (shooting, hits, explosions, power-ups, game-over, and victory fanfare) built dynamically.
   - A looping retro bass/melody background music track (BGM).
@@ -40,10 +44,11 @@ Welcome to **Space Invaders: Classic Arcade Edition (V.1)**—a premium, fully-f
 ---
 
 ## 🚀 What's Next?
-As we build on top of Version 1.0, the upcoming milestones include:
+As we build on top of Version 1.2, the upcoming milestones include:
 - **Implementing the Leaderboard UI:** Further refining the dashboard leaderboards with fully sorted global lists, search filters, and player profile inspect cards.
 - **Level & Wave Progression:** Implementing varying alien wave patterns, speeds, and mini-boss fights as difficulty increases.
-- **Enhanced Settings:** Additional configuration sliders for screen sizes, difficulty tuning, and key re-binding options.
+- **Enhancing Screen Sizes:** We will be further enhancing the screen sizing logic later on to handle deeper custom layouts and full-screen modes.
+- **Enhanced Settings:** Additional configuration sliders for difficulty tuning and key re-binding options.
 
 ---
 

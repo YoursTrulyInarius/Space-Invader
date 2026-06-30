@@ -405,7 +405,7 @@ _POWERUP_ICONS = {
 
 # ─────────────────────────────────────────────────────────────────────────────
 class InputBox:
-    def __init__(self, x, y, w, h, placeholder="Enter username and press ENTER..."):
+    def __init__(self, x, y, w, h, placeholder="Enter callsign..."):
         self.rect = pygame.Rect(x, y, w, h)
         self.text = ""
         self.ph   = placeholder
@@ -438,7 +438,7 @@ class InputBox:
 # ─────────────────────────────────────────────────────────────────────────────
 class ProfileScreen:
     def __init__(self, screen, db, audio=None):
-        self.screen  = screen
+        self.screen  = pygame.display.get_surface()
         self.db      = db
         self.audio   = audio
         self.input   = InputBox(SCREEN_WIDTH // 2 - 210, SCREEN_HEIGHT // 2 + 20, 420, 46)
@@ -472,16 +472,17 @@ class ProfileScreen:
             pygame.draw.circle(self.screen, (b, b, b), (int(s[0]), int(s[1])), s[3])
 
     def _draw_alien_parade(self):
-        spacing = SCREEN_WIDTH // 5
+        col_w = SCREEN_WIDTH // 4
         for i in range(4):
             surf  = _ALIEN_SURFS[i % 3]
             wave  = int(6 * abs(pygame.math.Vector2(0, 1).rotate(self.tick * 3 + i * 90).y))
-            x     = spacing // 2 + i * spacing - surf.get_width() // 2
+            x     = i * col_w + col_w // 2 - surf.get_width() // 2
             s2    = surf.copy()
             s2.set_alpha(90 + int(55 * abs(pygame.math.Vector2(1, 0).rotate(self.tick * 2 + i * 60).x)))
             self.screen.blit(s2, (x, 178 + wave))
 
     def run(self):
+        global SCREEN_WIDTH, SCREEN_HEIGHT
         if self.audio:
             self.audio.play_bgm()
         fnt_title = pygame.font.SysFont("consolas", 64, bold=True)
@@ -537,6 +538,9 @@ class ProfileScreen:
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
                     return None
+                elif ev.type == pygame.VIDEORESIZE:
+                    SCREEN_WIDTH, SCREEN_HEIGHT = ev.w, ev.h
+                    self.screen = pygame.display.set_mode((ev.w, ev.h), pygame.RESIZABLE)
                 res = self.input.handle_event(ev)
                 if res is not None:
                     name = res.strip()
@@ -758,7 +762,7 @@ class PowerUp:
 # ─────────────────────────────────────────────────────────────────────────────
 class Game:
     def __init__(self, username="Player", db=None, audio=None):
-        self.screen   = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.screen   = pygame.display.get_surface()
         pygame.display.set_caption(f"Space Invaders  |  {username}")
         self.clock    = pygame.time.Clock()
         self.username = username
@@ -830,8 +834,9 @@ class Game:
 
     # ── Enemies ───────────────────────────────────────────────────────────────
     def _create_enemies(self):
+        cols = max(3, (SCREEN_WIDTH - 60) // 68)
         for row in range(5):
-            for col in range(11):
+            for col in range(cols):
                 self.enemies.append(Enemy(30 + col * 68, 38 + row * 48, row % 3))
 
     def _spawn_enemy(self):
@@ -1034,6 +1039,7 @@ class Game:
     # ── Main loop ─────────────────────────────────────────────────────────────
     def run(self):
         """Returns: None (quit) | 'dashboard' (back to profile)"""
+        global SCREEN_WIDTH, SCREEN_HEIGHT
         running = True
         result  = None
 
@@ -1043,6 +1049,9 @@ class Game:
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
                     running = False; self._save_stats()
+                elif ev.type == pygame.VIDEORESIZE:
+                    SCREEN_WIDTH, SCREEN_HEIGHT = ev.w, ev.h
+                    self.screen = pygame.display.set_mode((ev.w, ev.h), pygame.RESIZABLE)
 
                 elif ev.type == pygame.KEYDOWN:
                     # ── Pause toggle ──────────────────────────────────────────
@@ -1125,6 +1134,8 @@ class Game:
                 self.player.draw(self.screen)
                 self._draw_game_over()
 
+            # We now draw directly to the fluid screen.
+
             pygame.display.flip()
             self.clock.tick(config.GAME_CONFIG['fps'])
 
@@ -1138,7 +1149,7 @@ if __name__ == "__main__":
                      password=config.DB_CONFIG['password'], database=config.DB_CONFIG['database'])
     audio = AudioManager()
 
-    pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("Space Invaders")
 
     while True:
