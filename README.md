@@ -1,8 +1,18 @@
 # Space Invaders: Classic Arcade Edition (V.1)
+### A Project for **INTEGRATIVE PROGRAMMING TECHNOLOGY**
 
-Welcome to **Space Invaders: Classic Arcade Edition (V.1)**—a premium, fully-featured retro space shooter built in Python using **Pygame** and backed by a persistent **MySQL** database.
+Welcome to **Space Invaders: Classic Arcade Edition (V.1)**—a premium, fully-featured retro space shooter built as a project for **Integrative Programming Technology**.
 
 > **Note:** This is **Version 1.0 (V.1)** of the game. Additional changes, optimizations, and updates will be made later as development continues.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Language:** Python 3.8+
+- **Graphics & Game Loop:** Pygame 2.6+
+- **Audio Synthesis:** NumPy (used for procedural sine-wave & noise audio synthesis)
+- **Database Connection:** MySQL Server (using `mysql-connector-python` adapter)
 
 ---
 
@@ -26,6 +36,14 @@ Welcome to **Space Invaders: Classic Arcade Edition (V.1)**—a premium, fully-f
 - **🗃️ Persistent MySQL Database:**
   - Tracks player profiles, high scores, total playtime, accuracy, enemies destroyed, and power-up collection statistics.
   - Computes and displays a live, dynamically updated top-scores leaderboard on the game-over screen.
+
+---
+
+## 🚀 What's Next?
+As we build on top of Version 1.0, the upcoming milestones include:
+- **Implementing the Leaderboard UI:** Further refining the dashboard leaderboards with fully sorted global lists, search filters, and player profile inspect cards.
+- **Level & Wave Progression:** Implementing varying alien wave patterns, speeds, and mini-boss fights as difficulty increases.
+- **Enhanced Settings:** Additional configuration sliders for screen sizes, difficulty tuning, and key re-binding options.
 
 ---
 
