@@ -3,6 +3,9 @@
 
 Welcome to **Space Invaders: Classic Arcade Edition (V.1.3)**—a premium, fully-featured retro space shooter built as a project for **Integrative Programming Technology**.
 
+## 💻 System Overview
+This system is a desktop-based 2D arcade shooter that seamlessly integrates a standalone Python/Pygame client with a persistent MySQL backend database. Its primary purpose is to demonstrate **Integrative Programming Technology** concepts by combining procedural audio generation, real-time graphics rendering, object-oriented game logic, and external database management into a single, unified software application. The system tracks individual player sessions, manages high scores, and generates real-time performance analytics (such as weapon accuracy and playtime).
+
 ---
 
 ## 📜 Version History & Changelog
