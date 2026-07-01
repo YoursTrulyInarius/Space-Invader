@@ -24,25 +24,43 @@ _ASSET_DIR = _os.path.join(_os.path.dirname(__file__), 'assets')
 def _load_img(fname, size, colorkey=None, threshold=50):
     """Load and scale an image.  If colorkey is given, pixels close to that
     colour (within `threshold` distance) are made fully transparent using
-    per-pixel alpha so anti-aliased edges are also removed cleanly."""
+    per-pixel alpha so anti-aliased edges are also removed cleanly.
+
+    NOTE: this used to require numpy for the colorkey pass, and silently
+    fell back to `Surface.set_colorkey()` if numpy was missing. That
+    fallback does NOT work reliably on a `.convert_alpha()` surface (the
+    per-pixel alpha channel takes precedence over colorkey in pygame), so
+    on any machine without numpy installed the sprite backgrounds stayed
+    solid instead of transparent. The fallback below is a real, working
+    pure-pygame implementation, so this can never silently break again."""
     path = _os.path.join(_ASSET_DIR, fname)
     try:
         raw  = pygame.image.load(path).convert_alpha()
         img  = pygame.transform.smoothscale(raw, size)
         if colorkey is not None:
+            kr, kg, kb = colorkey
             try:
                 import numpy as np
                 arr   = pygame.surfarray.pixels3d(img)   # shape (w,h,3)
                 alpha = pygame.surfarray.pixels_alpha(img)  # shape (w,h)
-                kr, kg, kb = colorkey
                 dist = ( arr[:,:,0].astype(np.int32) - kr )**2 + \
                        ( arr[:,:,1].astype(np.int32) - kg )**2 + \
                        ( arr[:,:,2].astype(np.int32) - kb )**2
                 alpha[ dist < threshold**2 * 3 ] = 0
                 del arr, alpha           # unlock the surface
             except ImportError:
-                # numpy not available – fall back to simple colorkey
-                img.set_colorkey(colorkey, pygame.RLEACCEL)
+                # numpy not available – working pure-pygame fallback.
+                # (Not vectorised, but sprites here are small so it's fast.)
+                w, h = img.get_size()
+                thr_sq = threshold ** 2 * 3
+                for x in range(w):
+                    for y in range(h):
+                        r, g, b, a = img.get_at((x, y))
+                        if a == 0:
+                            continue
+                        dist = (r - kr) ** 2 + (g - kg) ** 2 + (b - kb) ** 2
+                        if dist < thr_sq:
+                            img.set_at((x, y), (r, g, b, 0))
         return img
     except Exception as e:
         print(f"[WARN] Could not load {fname}: {e}")
@@ -84,6 +102,20 @@ def draw_glow_rect(surface, color, rect, radius=8, layers=3):
         pygame.draw.rect(gs, (*color, a), gs.get_rect(), border_radius=radius + i)
         surface.blit(gs, (rect.x - i * 2, rect.y - i * 2))
     pygame.draw.rect(surface, color, rect, border_radius=radius)
+
+def format_display_date(raw):
+    """Turn a DB timestamp like '2026-07-01 16:10' into 'July 1, 2026'
+    (falls back to returning the raw string if it can't be parsed)."""
+    if not raw:
+        return ""
+    s = str(raw).strip()
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            dt_obj = datetime.strptime(s, fmt)
+            return f"{dt_obj.strftime('%B')} {dt_obj.day}, {dt_obj.year}"
+        except ValueError:
+            continue
+    return s
 
 # ── Audio Manager ─────────────────────────────────────────────────────────────
 class AudioManager:
@@ -158,7 +190,14 @@ class AudioManager:
             print("[OK] Audio initialised.")
 
         except Exception as e:
-            print(f"[AUDIO] Skipping audio: {e}")
+            print("=" * 60)
+            print(f"[AUDIO] DISABLED — could not initialise audio: {e}")
+            if isinstance(e, ImportError):
+                print("[AUDIO] This game's SFX/music are synthesized with "
+                      "numpy at runtime. Install it with:")
+                print("        pip install -r requirements.txt")
+                print("        (or: pip install numpy)")
+            print("=" * 60)
             self.sounds = {}
 
     def _apply_vols(self):
@@ -191,11 +230,12 @@ class AudioManager:
 
 # ── Pause Menu ────────────────────────────────────────────────────────────────
 class PauseMenu:
-    _OPTIONS = ['CONTINUE', 'DASHBOARD', 'SETTINGS']
+    _OPTIONS = ['CONTINUE', 'LEADERBOARD', 'DASHBOARD', 'SETTINGS']
 
-    def __init__(self, screen, audio):
+    def __init__(self, screen, audio, db=None):
         self.screen       = screen
         self.audio        = audio
+        self.db           = db
         self.state        = 'main'   # 'main' | 'settings'
         self.sel          = 0
         self.sfx_drag     = False
@@ -248,9 +288,10 @@ class PauseMenu:
 
     def _activate(self, idx):
         opt = self._OPTIONS[idx]
-        if opt == 'CONTINUE':   return 'continue'
-        if opt == 'DASHBOARD':  return 'dashboard'
-        if opt == 'SETTINGS':   self.state = 'settings'
+        if opt == 'CONTINUE':     return 'continue'
+        if opt == 'LEADERBOARD':  return 'leaderboard'
+        if opt == 'DASHBOARD':    return 'dashboard'
+        if opt == 'SETTINGS':     self.state = 'settings'
         return None
 
     def _settings_event(self, event):
@@ -292,7 +333,11 @@ class PauseMenu:
             self._draw_settings()
 
     def _draw_main(self):
-        panel = pygame.Rect(SCREEN_WIDTH // 2 - 165, SCREEN_HEIGHT // 2 - 128, 330, 270)
+        cy      = SCREEN_HEIGHT // 2
+        btns    = self._btn_rects()
+        panel_top    = cy - 128
+        panel_bottom = btns[-1].bottom + 34
+        panel = pygame.Rect(SCREEN_WIDTH // 2 - 165, panel_top, 330, panel_bottom - panel_top)
         pygame.draw.rect(self.screen, (12, 12, 26), panel, border_radius=12)
         pygame.draw.rect(self.screen, (70, 75, 140), panel, 2, border_radius=12)
 
@@ -302,7 +347,7 @@ class PauseMenu:
                          (SCREEN_WIDTH // 2 - 140, SCREEN_HEIGHT // 2 - 70),
                          (SCREEN_WIDTH // 2 + 140, SCREEN_HEIGHT // 2 - 70), 1)
 
-        for i, (rect, opt) in enumerate(zip(self._btn_rects(), self._OPTIONS)):
+        for i, (rect, opt) in enumerate(zip(btns, self._OPTIONS)):
             sel    = (i == self.sel)
             bg     = (38, 96, 200) if sel else (20, 22, 40)
             border = CYAN if sel else (55, 60, 120)
@@ -314,8 +359,7 @@ class PauseMenu:
 
         ht = self.fnt_sm.render("ESC = Resume   ENTER = Select   Arrow Keys = Navigate",
                                 True, GRAY)
-        self.screen.blit(ht, (SCREEN_WIDTH // 2 - ht.get_width() // 2,
-                              SCREEN_HEIGHT // 2 + 148))
+        self.screen.blit(ht, (SCREEN_WIDTH // 2 - ht.get_width() // 2, panel_bottom + 14))
 
     def _draw_settings(self):
         panel = pygame.Rect(SCREEN_WIDTH // 2 - 185, SCREEN_HEIGHT // 2 - 158, 370, 320)
@@ -361,6 +405,266 @@ class PauseMenu:
         hx = bar.x + int(bar.width * val)
         pygame.draw.circle(self.screen, WHITE, (hx, bar.centery), 9)
         pygame.draw.circle(self.screen, color, (hx, bar.centery), 7)
+
+
+def _draw_slider_bar(surface, bar, val, color):
+    """Module-level slider renderer, shared by PauseMenu's settings tab and
+    the standalone AudioSettingsScreen so the visuals stay in sync."""
+    pygame.draw.rect(surface, DARK_GRAY, bar, border_radius=4)
+    fill = pygame.Rect(bar.x, bar.y, int(bar.width * val), bar.height)
+    if fill.width > 0:
+        pygame.draw.rect(surface, color, fill, border_radius=4)
+    hx = bar.x + int(bar.width * val)
+    pygame.draw.circle(surface, WHITE, (hx, bar.centery), 9)
+    pygame.draw.circle(surface, color, (hx, bar.centery), 7)
+
+
+# ── Standalone Leaderboard screen (accessible from the main menu) ─────────────
+class LeaderboardScreen:
+    """Full-screen top-10 leaderboard, reachable from the main menu without
+    needing to start (or finish) a game."""
+
+    def __init__(self, screen, db):
+        self.screen  = screen
+        self.db      = db
+        self.clock   = pygame.time.Clock()
+        self.tick    = 0
+        self.stars   = [[random.randint(0, SCREEN_WIDTH),
+                         random.randint(0, SCREEN_HEIGHT),
+                         random.uniform(0.3, 1.4),
+                         random.randint(1, 2)] for _ in range(90)]
+        self.fnt_ttl = pygame.font.SysFont("consolas", 40, bold=True)
+        self.fnt_hd  = pygame.font.SysFont("consolas", 16, bold=True)
+        self.fnt_row = pygame.font.SysFont("consolas", 17)
+        self.fnt_sm  = pygame.font.SysFont("consolas", 15)
+
+    def _draw_bg(self):
+        self.screen.fill(NAVY)
+        for s in self.stars:
+            s[1] += s[2]
+            if s[1] > SCREEN_HEIGHT:
+                s[1] = 0
+                s[0] = random.randint(0, SCREEN_WIDTH)
+            b = random.randint(140, 240)
+            pygame.draw.circle(self.screen, (b, b, b), (int(s[0]), int(s[1])), s[3])
+
+    def run(self):
+        global SCREEN_WIDTH, SCREEN_HEIGHT
+        online = bool(self.db and self.db.connection)
+        rows   = self.db.get_leaderboard() if online else []
+
+        while True:
+            self.tick += 1
+            self._draw_bg()
+            draw_text_center(self.screen, "LEADERBOARD", self.fnt_ttl, YELLOW, 36)
+            pygame.draw.line(self.screen, (50, 70, 130),
+                             (SCREEN_WIDTH // 2 - 230, 92),
+                             (SCREEN_WIDTH // 2 + 230, 92), 1)
+
+            box_w = min(720, SCREEN_WIDTH - 60)
+            n_rows   = min(10, len(rows)) if online and rows else 1
+            content_h = 54 + n_rows * 30 + 20
+            box_h = max(140, min(content_h, SCREEN_HEIGHT - 200))
+            box   = pygame.Rect(SCREEN_WIDTH // 2 - box_w // 2, 116, box_w, box_h)
+            pygame.draw.rect(self.screen, (12, 12, 26), box, border_radius=12)
+            pygame.draw.rect(self.screen, (70, 75, 140), box, 2, border_radius=12)
+
+            if not online:
+                msg = self.fnt_row.render("Offline — no database connection.", True, GRAY)
+                self.screen.blit(msg, (box.centerx - msg.get_width() // 2, box.centery - 10))
+            elif not rows:
+                msg = self.fnt_row.render("No scores yet. Be the first to set one!", True, GRAY)
+                self.screen.blit(msg, (box.centerx - msg.get_width() // 2, box.centery - 10))
+            else:
+                cols = ["#", "CALLSIGN", "SCORE", "KILLS", "ACC", "DATE"]
+                offs = [0.025, 0.075, 0.34, 0.47, 0.575, 0.67]
+                hy   = box.y + 18
+                for h, off in zip(cols, offs):
+                    ht = self.fnt_hd.render(h, True, CYAN)
+                    self.screen.blit(ht, (box.x + int(box.width * off), hy))
+                pygame.draw.line(self.screen, (55, 60, 120),
+                                 (box.x + 14, hy + 26), (box.right - 14, hy + 26), 1)
+
+                ry = hy + 36
+                RANK_COLORS = {0: (255, 215, 60), 1: (200, 205, 215), 2: (200, 140, 80)}
+                for i, entry in enumerate(rows[:10]):
+                    un = str(entry.get('username', '???'))[:14]
+                    sc = entry.get('score', 0)
+                    ek = entry.get('enemies_killed', 0)
+                    ac = entry.get('accuracy', 0) or 0
+                    dt = format_display_date(entry.get('game_date', ''))
+                    col = RANK_COLORS.get(i, WHITE)
+
+                    if i % 2 == 1:
+                        stripe = pygame.Rect(box.x + 8, ry - 4, box.width - 16, 28)
+                        s = pygame.Surface(stripe.size, pygame.SRCALPHA)
+                        s.fill((255, 255, 255, 10))
+                        self.screen.blit(s, stripe.topleft)
+
+                    vals = [f"{i+1}.", un, str(sc), str(ek), f"{float(ac):.0f}%", dt]
+                    for v, off in zip(vals, offs):
+                        vs = self.fnt_row.render(v, True, col)
+                        self.screen.blit(vs, (box.x + int(box.width * off), ry))
+                    ry += 30
+                    if ry > box.bottom - 24:
+                        break
+
+            back_rect = pygame.Rect(SCREEN_WIDTH // 2 - 75, SCREEN_HEIGHT - 62, 150, 38)
+            hov = back_rect.collidepoint(pygame.mouse.get_pos())
+            pygame.draw.rect(self.screen, (38, 96, 200) if hov else (20, 22, 40), back_rect, border_radius=8)
+            pygame.draw.rect(self.screen, CYAN if hov else (55, 60, 120), back_rect, 2, border_radius=8)
+            bt = self.fnt_row.render("< BACK", True, WHITE)
+            self.screen.blit(bt, (back_rect.centerx - bt.get_width() // 2,
+                                  back_rect.centery - bt.get_height() // 2))
+
+            hint = self.fnt_sm.render("ESC / click BACK to return to the main menu", True, GRAY)
+            self.screen.blit(hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, SCREEN_HEIGHT - 22))
+
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                elif ev.type == pygame.VIDEORESIZE:
+                    SCREEN_WIDTH, SCREEN_HEIGHT = ev.w, ev.h
+                    self.screen = pygame.display.set_mode((ev.w, ev.h), pygame.RESIZABLE)
+                elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                    return
+                elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    if back_rect.collidepoint(ev.pos):
+                        return
+
+            pygame.display.flip()
+            self.clock.tick(60)
+
+
+# ── Standalone Audio Settings screen (accessible from the main menu) ──────────
+class AudioSettingsScreen:
+    """Lets the player adjust SFX / music volume from the main menu, without
+    needing to be in a paused game first."""
+
+    def __init__(self, screen, audio):
+        self.screen    = screen
+        self.audio     = audio
+        self.clock     = pygame.time.Clock()
+        self.sfx_drag  = False
+        self.music_drag = False
+        self.stars     = [[random.randint(0, SCREEN_WIDTH),
+                           random.randint(0, SCREEN_HEIGHT),
+                           random.uniform(0.3, 1.4),
+                           random.randint(1, 2)] for _ in range(90)]
+        self.fnt_ttl = pygame.font.SysFont("consolas", 40, bold=True)
+        self.fnt_lbl = pygame.font.SysFont("consolas", 19)
+        self.fnt_sm  = pygame.font.SysFont("consolas", 15)
+
+    def _draw_bg(self):
+        self.screen.fill(NAVY)
+        for s in self.stars:
+            s[1] += s[2]
+            if s[1] > SCREEN_HEIGHT:
+                s[1] = 0
+                s[0] = random.randint(0, SCREEN_WIDTH)
+            b = random.randint(140, 240)
+            pygame.draw.circle(self.screen, (b, b, b), (int(s[0]), int(s[1])), s[3])
+
+    def _rects(self):
+        cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        bw = 320
+        return {
+            'sfx_bar':   pygame.Rect(cx - bw // 2, cy - 30, bw, 18),
+            'music_bar': pygame.Rect(cx - bw // 2, cy + 50, bw, 18),
+            'test_btn':  pygame.Rect(cx - 95, cy + 108, 190, 40),
+            'back_btn':  pygame.Rect(cx - 95, cy + 160, 190, 40),
+        }
+
+    def _update_vol(self, kind, mx, bar):
+        v = max(0.0, min(1.0, (mx - bar.x) / bar.width))
+        if not self.audio:
+            return
+        if kind == 'sfx':
+            self.audio.set_sfx_vol(v)
+        else:
+            self.audio.set_music_vol(v)
+
+    def run(self):
+        global SCREEN_WIDTH, SCREEN_HEIGHT
+        while True:
+            self._draw_bg()
+            draw_text_center(self.screen, "AUDIO SETTINGS", self.fnt_ttl, YELLOW, 60)
+            pygame.draw.line(self.screen, (50, 70, 130),
+                             (SCREEN_WIDTH // 2 - 200, 116),
+                             (SCREEN_WIDTH // 2 + 200, 116), 1)
+
+            r = self._rects()
+
+            if not self.audio or not self.audio.sounds:
+                msg = self.fnt_lbl.render("Audio is unavailable (numpy not installed).",
+                                          True, RED)
+                self.screen.blit(msg, (SCREEN_WIDTH // 2 - msg.get_width() // 2,
+                                       SCREEN_HEIGHT // 2 - 60))
+            else:
+                sfx_v   = self.audio.sfx_vol
+                music_v = self.audio.music_vol
+                sl = self.fnt_lbl.render(f"SFX VOLUME    {int(sfx_v * 100):>3}%", True, CYAN)
+                self.screen.blit(sl, (SCREEN_WIDTH // 2 - sl.get_width() // 2, r['sfx_bar'].y - 30))
+                _draw_slider_bar(self.screen, r['sfx_bar'], sfx_v, CYAN)
+
+                ml = self.fnt_lbl.render(f"MUSIC VOLUME  {int(music_v * 100):>3}%", True, PURPLE)
+                self.screen.blit(ml, (SCREEN_WIDTH // 2 - ml.get_width() // 2, r['music_bar'].y - 30))
+                _draw_slider_bar(self.screen, r['music_bar'], music_v, PURPLE)
+
+                mpos = pygame.mouse.get_pos()
+                hov  = r['test_btn'].collidepoint(mpos)
+                pygame.draw.rect(self.screen, (38, 96, 200) if hov else (20, 22, 40),
+                                 r['test_btn'], border_radius=8)
+                pygame.draw.rect(self.screen, CYAN if hov else (55, 60, 120), r['test_btn'], 2, border_radius=8)
+                tb = self.fnt_lbl.render("TEST SFX", True, WHITE)
+                self.screen.blit(tb, (r['test_btn'].centerx - tb.get_width() // 2,
+                                      r['test_btn'].centery - tb.get_height() // 2))
+
+            mpos = pygame.mouse.get_pos()
+            hov  = r['back_btn'].collidepoint(mpos)
+            pygame.draw.rect(self.screen, (38, 96, 200) if hov else (20, 22, 40),
+                             r['back_btn'], border_radius=8)
+            pygame.draw.rect(self.screen, CYAN if hov else (55, 60, 120), r['back_btn'], 2, border_radius=8)
+            bb = self.fnt_lbl.render("< BACK", True, WHITE)
+            self.screen.blit(bb, (r['back_btn'].centerx - bb.get_width() // 2,
+                                  r['back_btn'].centery - bb.get_height() // 2))
+
+            hint = self.fnt_sm.render("Drag sliders to adjust   |   ESC = Back", True, GRAY)
+            self.screen.blit(hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, SCREEN_HEIGHT - 30))
+
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                elif ev.type == pygame.VIDEORESIZE:
+                    SCREEN_WIDTH, SCREEN_HEIGHT = ev.w, ev.h
+                    self.screen = pygame.display.set_mode((ev.w, ev.h), pygame.RESIZABLE)
+                elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                    return
+                elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    r = self._rects()
+                    if self.audio and self.audio.sounds:
+                        if r['sfx_bar'].collidepoint(ev.pos):
+                            self.sfx_drag = True
+                            self._update_vol('sfx', ev.pos[0], r['sfx_bar'])
+                        elif r['music_bar'].collidepoint(ev.pos):
+                            self.music_drag = True
+                            self._update_vol('music', ev.pos[0], r['music_bar'])
+                        elif r['test_btn'].collidepoint(ev.pos):
+                            self.audio.play('shoot')
+                    if r['back_btn'].collidepoint(ev.pos):
+                        return
+                elif ev.type == pygame.MOUSEBUTTONUP:
+                    self.sfx_drag = self.music_drag = False
+                elif ev.type == pygame.MOUSEMOTION:
+                    r = self._rects()
+                    if self.sfx_drag:
+                        self._update_vol('sfx', ev.pos[0], r['sfx_bar'])
+                    if self.music_drag:
+                        self._update_vol('music', ev.pos[0], r['music_bar'])
+
+            pygame.display.flip()
+            self.clock.tick(60)
+
 
 # ── Classic pixel-art alien grids ─────────────────────────────────────────────
 _GRIDS = [
@@ -595,12 +899,46 @@ class ProfileScreen:
             cs = fnt_cred.render("DEVELOPED BY: CABARDO, SONJEEV C.", True, (60, 65, 90))
             self.screen.blit(cs, (SCREEN_WIDTH // 2 - cs.get_width() // 2, SCREEN_HEIGHT - 26))
 
+            # ── Leaderboard / Settings buttons (slim row, above the title) ───
+            btn_w, btn_h, gap = 150, 30, 10
+            set_rect = pygame.Rect(SCREEN_WIDTH - 12 - btn_w, 10, btn_w, btn_h)
+            lb_rect  = pygame.Rect(set_rect.x - gap - btn_w, 10, btn_w, btn_h)
+            mpos = pygame.mouse.get_pos()
+            for rect, label in ((lb_rect, "LEADERBOARD F1"), (set_rect, "SETTINGS F2")):
+                hov = rect.collidepoint(mpos)
+                pygame.draw.rect(self.screen, (30, 34, 60) if hov else (16, 17, 32), rect, border_radius=6)
+                pygame.draw.rect(self.screen, CYAN if hov else (55, 60, 120), rect, 1, border_radius=6)
+                lt = fnt_cred.render(label, True, WHITE if hov else LIGHT_GRAY)
+                self.screen.blit(lt, (rect.centerx - lt.get_width() // 2,
+                                      rect.centery - lt.get_height() // 2))
+
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
                     return None
                 elif ev.type == pygame.VIDEORESIZE:
                     SCREEN_WIDTH, SCREEN_HEIGHT = ev.w, ev.h
                     self.screen = pygame.display.set_mode((ev.w, ev.h), pygame.RESIZABLE)
+                elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_F1:
+                    LeaderboardScreen(self.screen, self.db).run()
+                    self.screen = pygame.display.get_surface()
+                    SCREEN_WIDTH, SCREEN_HEIGHT = self.screen.get_size()
+                    continue
+                elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_F2:
+                    AudioSettingsScreen(self.screen, self.audio).run()
+                    self.screen = pygame.display.get_surface()
+                    SCREEN_WIDTH, SCREEN_HEIGHT = self.screen.get_size()
+                    continue
+                elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    if lb_rect.collidepoint(ev.pos):
+                        LeaderboardScreen(self.screen, self.db).run()
+                        self.screen = pygame.display.get_surface()
+                        SCREEN_WIDTH, SCREEN_HEIGHT = self.screen.get_size()
+                        continue
+                    elif set_rect.collidepoint(ev.pos):
+                        AudioSettingsScreen(self.screen, self.audio).run()
+                        self.screen = pygame.display.get_surface()
+                        SCREEN_WIDTH, SCREEN_HEIGHT = self.screen.get_size()
+                        continue
                 res = self.input.handle_event(ev)
                 if res is not None:
                     name = res.strip()
@@ -825,7 +1163,7 @@ class Boss:
     def __init__(self, max_hp=30, level=1):
         self.x = SCREEN_WIDTH // 2 - self.W // 2
         self.y = -120
-        self.target_y = 60
+        self.target_y = 78
         self.hp = max_hp
         self.max_hp = max_hp
         self.speed = 2.5
@@ -980,7 +1318,7 @@ class Game:
         self.fnt_sm  = pygame.font.SysFont("consolas", 17)
         self.fnt_ttl = pygame.font.SysFont("consolas", 56, bold=True)
 
-        self.pause_menu = PauseMenu(self.screen, self.audio) if self.audio else None
+        self.pause_menu = PauseMenu(self.screen, self.audio, self.db) if self.audio else None
         self._create_enemies()
         if self.audio:
             self.audio.play_bgm()
@@ -1014,7 +1352,7 @@ class Game:
         for row in range(rows):
             for col in range(cols):
                 e = Enemy(start_x + col * 68, -100 - row * 48, row % 3)
-                e.target_y = 38 + row * 48
+                e.target_y = 84 + row * 48   # keep clear of the HUD bar (y ≤ 58)
                 self.enemies.append(e)
 
     # ── Power-ups ─────────────────────────────────────────────────────────────
@@ -1274,6 +1612,9 @@ class Game:
                         self.paused = False
                     elif pm_result == 'dashboard':
                         result = 'dashboard'; running = False; self._save_stats()
+                    elif pm_result == 'leaderboard':
+                        LeaderboardScreen(self.screen, self.db).run()
+                        self.pause_menu.state = 'main'  # stay paused, back to pause menu
 
             # ── Draw background (always) ───────────────────────────────────────
             self._draw_bg()
