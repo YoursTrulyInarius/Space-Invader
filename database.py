@@ -1,134 +1,179 @@
 import mysql.connector
-from datetime import datetime
 import config
+
 
 class Database:
     def __init__(self, host=None, user=None, password=None, database=None):
-        # Use config if parameters not provided
         self.host = host or config.DB_CONFIG['host']
         self.user = user or config.DB_CONFIG['user']
         self.password = password or config.DB_CONFIG['password']
         self.database = database or config.DB_CONFIG['database']
         self.connection = None
         self.cursor = None
+        self.connected = False
         self.connect()
-        
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def _is_ready(self):
+        return self.connection is not None and self.cursor is not None
+
+    def _ensure_connection(self):
+        return self._is_ready()
+
     def connect(self):
-        """Establish database connection"""
+        """Establish a database connection and initialize the schema."""
         try:
+            self.connection = mysql.connector.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                charset='utf8mb4',
+                use_unicode=True,
+            )
+            self._create_database_if_needed()
             self.connection = mysql.connector.connect(
                 host=self.host,
                 user=self.user,
                 password=self.password,
                 database=self.database,
                 charset='utf8mb4',
-                use_unicode=True
+                use_unicode=True,
             )
-            self.cursor = self.connection.cursor(dictionary=True)  # Return results as dictionaries
+            self.cursor = self.connection.cursor(dictionary=True)
+            self.connected = True
+            self.initialize_schema()
             print("[OK] Database connected successfully!")
             return True
         except mysql.connector.Error as err:
+            self.connected = False
+            self.connection = None
+            self.cursor = None
             print(f"[ERR] Database connection error: {err}")
             print("Please make sure:")
             print("  1. MySQL is running")
-            print("  2. Database 'space_invaders' exists")
-            print("  3. Credentials in config.py are correct")
+            print("  2. Credentials in config.py are correct")
             return False
-            
-    def create_tables(self):
-        """Create all necessary tables if they don't exist"""
+
+    def _create_database_if_needed(self):
+        if not self.connection:
+            return False
+
+        cursor = self.connection.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{self.database}`")
+        cursor.close()
+        self.connection.commit()
+        return True
+
+    def initialize_schema(self):
+        """Create all required database objects if they don't exist."""
+        if not self._ensure_connection():
+            return False
+
         try:
-            # Players table
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS players (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    username VARCHAR(50) UNIQUE NOT NULL,
-                    total_score INT DEFAULT 0,
-                    total_games_played INT DEFAULT 0,
-                    total_enemies_killed INT DEFAULT 0,
-                    total_powerups_collected INT DEFAULT 0,
-                    highest_score INT DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """)
-            
-            # Game sessions table
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS game_sessions (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    player_id INT NOT NULL,
-                    score INT DEFAULT 0,
-                    enemies_killed INT DEFAULT 0,
-                    powerups_collected INT DEFAULT 0,
-                    shield_powerups INT DEFAULT 0,
-                    multishot_powerups INT DEFAULT 0,
-                    heart_powerups INT DEFAULT 0,
-                    shots_fired INT DEFAULT 0,
-                    shots_hit INT DEFAULT 0,
-                    accuracy DECIMAL(5,2) DEFAULT 0,
-                    game_duration INT DEFAULT 0,
-                    game_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """)
-            
-            # Drop existing view if it exists
-            self.cursor.execute("DROP VIEW IF EXISTS leaderboard")
-            
-            # Create leaderboard view
-            self.cursor.execute("""
-                CREATE VIEW leaderboard AS
-                SELECT 
-                    p.username,
-                    gs.score,
-                    gs.enemies_killed,
-                    gs.powerups_collected,
-                    gs.accuracy,
-                    DATE_FORMAT(gs.game_date, '%%Y-%%m-%%d %%H:%%i') as game_date
-                FROM game_sessions gs
-                JOIN players p ON gs.player_id = p.id
-                ORDER BY gs.score DESC
-                LIMIT 10
-            """)
-            
-            # Create indexes
-            self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_username ON players(username)")
-            self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_id ON game_sessions(player_id)")
-            self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_score ON game_sessions(score)")
-            
+            self._create_players_table()
+            self._create_game_sessions_table()
+            self._create_leaderboard_view()
+            self._create_indexes()
             self.connection.commit()
-            print("[OK] Tables created successfully!")
-            
+            print("[OK] Database schema initialized successfully!")
+            return True
         except mysql.connector.Error as err:
             print(f"[ERR] Error creating tables: {err}")
-            
+            return False
+
+    def create_tables(self):
+        """Backward-compatible alias for schema initialization."""
+        return self.initialize_schema()
+
+    def _create_players_table(self):
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS players (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                total_score INT DEFAULT 0,
+                total_games_played INT DEFAULT 0,
+                total_enemies_killed INT DEFAULT 0,
+                total_powerups_collected INT DEFAULT 0,
+                highest_score INT DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
+    def _create_game_sessions_table(self):
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS game_sessions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                player_id INT NOT NULL,
+                score INT DEFAULT 0,
+                enemies_killed INT DEFAULT 0,
+                powerups_collected INT DEFAULT 0,
+                shield_powerups INT DEFAULT 0,
+                multishot_powerups INT DEFAULT 0,
+                heart_powerups INT DEFAULT 0,
+                shots_fired INT DEFAULT 0,
+                shots_hit INT DEFAULT 0,
+                accuracy DECIMAL(5,2) DEFAULT 0,
+                game_duration INT DEFAULT 0,
+                game_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
+    def _create_leaderboard_view(self):
+        self.cursor.execute("DROP VIEW IF EXISTS leaderboard")
+        self.cursor.execute("""
+            CREATE VIEW leaderboard AS
+            SELECT
+                p.username,
+                gs.score,
+                gs.enemies_killed,
+                gs.powerups_collected,
+                gs.accuracy,
+                DATE_FORMAT(gs.game_date, '%%Y-%%m-%%d %%H:%%i') as game_date
+            FROM game_sessions gs
+            JOIN players p ON gs.player_id = p.id
+            ORDER BY gs.score DESC
+            LIMIT 10
+        """)
+
+    def _create_indexes(self):
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_username ON players(username)")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_id ON game_sessions(player_id)")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_score ON game_sessions(score)")
+
     def get_or_create_player(self, username):
-        """Get existing player or create new one"""
+        """Get an existing player or create a new one."""
+        if not self._ensure_connection():
+            return None
+
         try:
-            # Check if player exists
             self.cursor.execute("SELECT id FROM players WHERE username = %s", (username,))
             result = self.cursor.fetchone()
-            
+
             if result:
                 return result['id']
-            else:
-                # Create new player
-                self.cursor.execute(
-                    "INSERT INTO players (username) VALUES (%s)",
-                    (username,)
-                )
-                self.connection.commit()
-                return self.cursor.lastrowid
-                
+
+            self.cursor.execute("INSERT INTO players (username) VALUES (%s)", (username,))
+            self.connection.commit()
+            return self.cursor.lastrowid
+
         except mysql.connector.Error as err:
             print(f"[ERR] Error getting/creating player: {err}")
             return None
-            
+
     def start_game_session(self, player_id):
-        """Create a new game session record"""
+        """Create a new game session record."""
+        if not self._ensure_connection():
+            return None
+
         try:
             self.cursor.execute("""
-                INSERT INTO game_sessions (player_id) 
+                INSERT INTO game_sessions (player_id)
                 VALUES (%s)
             """, (player_id,))
             self.connection.commit()
@@ -136,20 +181,25 @@ class Database:
         except mysql.connector.Error as err:
             print(f"[ERR] Error starting game session: {err}")
             return None
-            
+
     def update_game_session(self, game_id, player_id, stats):
-        """Update game session with final statistics"""
+        """Update a completed game session with final statistics."""
+        if not self._ensure_connection():
+            return None
+
         try:
-            # Calculate accuracy
             accuracy = 0
-            if stats['shots_fired'] > 0:
-                accuracy = (stats['shots_hit'] / stats['shots_fired']) * 100
-                
-            total_powerups = stats['shield_powerups'] + stats['multishot_powerups'] + stats['heart_powerups']
-                
-            # Update game session
+            if stats.get('shots_fired', 0) > 0:
+                accuracy = (stats.get('shots_hit', 0) / stats['shots_fired']) * 100
+
+            total_powerups = (
+                stats.get('shield_powerups', 0)
+                + stats.get('multishot_powerups', 0)
+                + stats.get('heart_powerups', 0)
+            )
+
             self.cursor.execute("""
-                UPDATE game_sessions 
+                UPDATE game_sessions
                 SET score = %s,
                     enemies_killed = %s,
                     powerups_collected = %s,
@@ -162,23 +212,22 @@ class Database:
                     game_duration = %s
                 WHERE id = %s
             """, (
-                stats['score'],
-                stats['enemies_killed'],
+                stats.get('score', 0),
+                stats.get('enemies_killed', 0),
                 total_powerups,
-                stats['shield_powerups'],
-                stats['multishot_powerups'],
-                stats['heart_powerups'],
-                stats['shots_fired'],
-                stats['shots_hit'],
+                stats.get('shield_powerups', 0),
+                stats.get('multishot_powerups', 0),
+                stats.get('heart_powerups', 0),
+                stats.get('shots_fired', 0),
+                stats.get('shots_hit', 0),
                 accuracy,
-                stats['duration'],
-                game_id
+                stats.get('duration', 0),
+                game_id,
             ))
             self.connection.commit()
-            
-            # Update player totals
+
             self.cursor.execute("""
-                UPDATE players 
+                UPDATE players
                 SET total_score = total_score + %s,
                     total_games_played = total_games_played + 1,
                     total_enemies_killed = total_enemies_killed + %s,
@@ -186,23 +235,28 @@ class Database:
                     highest_score = GREATEST(highest_score, %s)
                 WHERE id = %s
             """, (
-                stats['score'],
-                stats['enemies_killed'],
+                stats.get('score', 0),
+                stats.get('enemies_killed', 0),
                 total_powerups,
-                stats['score'],
-                player_id
+                stats.get('score', 0),
+                player_id,
             ))
             self.connection.commit()
-            print(f"[OK] Game session updated: Score={stats['score']}, Enemies={stats['enemies_killed']}")
-            
+            print(f"[OK] Game session updated: Score={stats.get('score', 0)}, Enemies={stats.get('enemies_killed', 0)}")
+            return True
+
         except mysql.connector.Error as err:
             print(f"[ERR] Error updating game session: {err}")
-            
+            return False
+
     def get_leaderboard(self):
-        """Get top 10 scores"""
+        """Get the top 10 scores."""
+        if not self._ensure_connection():
+            return []
+
         try:
             self.cursor.execute("""
-                SELECT 
+                SELECT
                     username,
                     score,
                     enemies_killed,
@@ -215,31 +269,37 @@ class Database:
         except mysql.connector.Error as err:
             print(f"[ERR] Error fetching leaderboard: {err}")
             return []
-            
+
     def get_player_stats(self, username):
-        """Get player statistics"""
+        """Get player statistics."""
+        if not self._ensure_connection():
+            return None
+
         try:
             self.cursor.execute("""
-                SELECT 
+                SELECT
                     total_score,
                     total_games_played,
                     total_enemies_killed,
                     total_powerups_collected,
                     highest_score,
                     DATE_FORMAT(created_at, '%%Y-%%m-%%d') as created_at
-                FROM players 
+                FROM players
                 WHERE username = %s
             """, (username,))
             return self.cursor.fetchone()
         except mysql.connector.Error as err:
             print(f"[ERR] Error fetching player stats: {err}")
             return None
-            
+
     def get_game_history(self, username, limit=10):
-        """Get recent game history for a player"""
+        """Get recent game history for a player."""
+        if not self._ensure_connection():
+            return []
+
         try:
             self.cursor.execute("""
-                SELECT 
+                SELECT
                     score,
                     enemies_killed,
                     powerups_collected,
@@ -256,9 +316,12 @@ class Database:
         except mysql.connector.Error as err:
             print(f"[ERR] Error fetching game history: {err}")
             return []
-            
+
     def get_player_rank(self, username):
-        """Get player's rank based on highest score"""
+        """Get a player's ranking based on highest score."""
+        if not self._ensure_connection():
+            return None
+
         try:
             self.cursor.execute("""
                 SELECT COUNT(*) + 1 as rank
@@ -272,10 +335,24 @@ class Database:
         except mysql.connector.Error as err:
             print(f"[ERR] Error getting player rank: {err}")
             return None
-            
+
     def close(self):
-        """Close database connection"""
-        if self.connection:
-            self.cursor.close()
-            self.connection.close()
-            print("[OK] Database connection closed.")
+        """Close the database connection safely."""
+        if self.cursor is not None:
+            try:
+                self.cursor.close()
+            except mysql.connector.Error:
+                pass
+            finally:
+                self.cursor = None
+
+        if self.connection is not None:
+            try:
+                self.connection.close()
+            except mysql.connector.Error:
+                pass
+            finally:
+                self.connection = None
+
+        self.connected = False
+        print("[OK] Database connection closed.")
