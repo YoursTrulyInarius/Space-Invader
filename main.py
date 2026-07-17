@@ -28,7 +28,7 @@ def main():
         (constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT),
         pygame.RESIZABLE
     )
-    pygame.display.set_caption("Space Invaders")
+    pygame.display.set_caption("Space Invaders - Cabardo, Sonjeev C")
     
     # Load game textures/sprites AFTER display init
     load_game_images()

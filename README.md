@@ -6,12 +6,12 @@ A retro-style arcade shooter built in Python with Pygame, procedural audio, and 
 Space Invaders: Classic Arcade Edition is a desktop game that combines classic arcade gameplay with a modern structure. The project uses object-oriented design for the game logic, a dedicated database layer for persistence, and procedural audio to keep the package self-contained.
 
 ## Latest Update
-### Version 1.6 — Modular Game Objects and Improved Sound
-- Split game object classes into dedicated modules: `game/player.py`, `game/bullet.py`, `game/enemy.py`, and `game/powerup.py`.
-- Preserved the original `game/entities.py` import path as a compatibility shim.
-- Refined the enemy destruction audio effect so kills sound punchier and less like a zappy electric noise.
-- Fixed runtime boss rendering and color import handling in `game/enemy.py`.
-- Maintained database reliability and schema initialization from the prior refactor.
+### Version 1.7 — Polished UI, Solar System Title Screen, and Button Icons
+- Added a pixel-style orbiting solar system to the main profile screen while preserving the original starfield background.
+- Reworked the title screen UI with larger central presentation, improved spacing, and cleaner menu button styling.
+- Added icon-enhanced `LEADERBOARD F1` and `SETTINGS F2` buttons for better navigation affordance.
+- Preserved modular game object structure and compatibility shim for `game/entities.py`.
+- Kept the refined enemy destruction audio and boss rendering fixes from the prior refactor.
 
 ## Features
 - Wave-based gameplay with boss encounters
@@ -83,6 +83,12 @@ python -m unittest discover -s tests -p "test_database.py" -v
 ```
 
 ## Version History
+### Version 1.7
+- Added a pixelated solar system animation to the profile menu screen
+- Polished main menu and button visuals with stronger scene presentation
+- Added icons for leaderboard/settings menu buttons
+- Preserved earlier modular refactor and audio improvements
+
 ### Version 1.6
 - Modular game object refactor
 - Refined enemy destruction audio
