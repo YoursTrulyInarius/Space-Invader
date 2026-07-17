@@ -9,7 +9,9 @@ from datetime import datetime
 import config
 from database import Database
 import game.constants as constants
-from game.entities import Player, Enemy, Boss, PowerUp
+from game.player import Player
+from game.enemy import Enemy, Boss
+from game.powerup import PowerUp
 from game.ui import PauseMenu
 from game.screens import LeaderboardScreen
 

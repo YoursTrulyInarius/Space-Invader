@@ -42,11 +42,12 @@ class AudioManager:
             def boom(dur, vol=0.6):
                 n      = int(SR * dur)
                 t      = np.linspace(0, dur, n, endpoint=False)
-                w      = np.random.uniform(-1, 1, n)
-                freqs  = np.linspace(150, 40, n)
-                rumble = np.sin(2 * np.pi * freqs * t)
+                noise  = np.random.uniform(-1, 1, n)
+                rumble = np.sin(2 * np.pi * np.linspace(120, 50, n) * t)
+                crack  = np.sin(2 * np.pi * np.linspace(2000, 700, n) * t)
                 env    = np.exp(-np.linspace(0, 6, n))
-                mix    = (w * 0.6 + rumble * 0.6) * env
+                mix    = (rumble * 0.45 + crack * 0.35 + noise * 0.20) * env
+                mix[:min(n, int(SR * 0.04))] += np.sin(2 * np.pi * 1800 * t[:min(n, int(SR * 0.04))]) * np.exp(-np.linspace(0, 8, min(n, int(SR * 0.04)))) * 0.8
                 mix    = np.clip(mix * vol * 32767, -32767, 32767).astype(np.int16)
                 return np.column_stack([mix, mix])
 
@@ -54,7 +55,7 @@ class AudioManager:
                 return pygame.sndarray.make_sound(arr)
 
             self.sounds['shoot']    = make(sine(900, 0.06, 0.35, decay=10))
-            self.sounds['explode']  = make(boom(0.4, 0.7))
+            self.sounds['explode']  = make(boom(0.28, 0.9))
             self.sounds['powerup']  = make(cat(sine(380, 0.06, 0.4), sine(570, 0.06, 0.4), sine(860, 0.10, 0.4)))
             self.sounds['hit']      = make(cat(sine(130, 0.07, 0.5, decay=12), noise(0.08, 0.3)))
             self.sounds['gameover'] = make(cat(sine(380, 0.15, 0.4), sine(280, 0.15, 0.4), sine(190, 0.28, 0.4)))
