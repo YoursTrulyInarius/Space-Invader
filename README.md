@@ -53,12 +53,25 @@ Space Invaders: Classic Arcade Edition is a desktop game that combines classic a
 - `schema.sql`: SQL schema reference
 - `tests/`: regression tests for the database layer
 
-## Requirements
-Install the following dependencies:
+## Installation
 
-```bash
-pip install pygame numpy mysql-connector-python
-```
+Follow these step-by-step instructions to set up and run the game:
+
+1. **Open Git**: Launch your Git command line interface (such as Git Bash) or your system terminal.
+2. **Copy the Clone Command**: Copy the cloning command below:
+   ```bash
+   git clone https://github.com/YoursTrulyInarius/Space-Invader.git
+   ```
+3. **Clone the Repository**: Run the command in your terminal to download the project files, and navigate into the project folder:
+   ```bash
+   git clone https://github.com/YoursTrulyInarius/Space-Invader.git
+   cd Space-Invader
+   ```
+4. **Open in VS Code**: Open Visual Studio Code, go to **File > Open Folder...**, and select the cloned `Space-Invader` folder.
+5. **Install Dependencies**: Open the integrated terminal in VS Code and install `numpy`, `mysql-connector-python`, and `pygame` using pip:
+   ```bash
+   pip install numpy mysql-connector-python pygame
+   ```
 
 ## Configuration
 Update the connection settings in `config.py` before running the game.
