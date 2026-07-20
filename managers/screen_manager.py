@@ -6,13 +6,13 @@ import math
 import random
 import pygame
 
-import game.constants as constants
-from game.constants import (
+import constants
+from constants import (
     NAVY, YELLOW, LIGHT_GRAY, GREEN, RED, WHITE, CYAN, GRAY, PURPLE,
     draw_text_center, draw_glow_rect, format_display_date
 )
-from game.assets import get_alien_surf
-from game.ui import InputBox, _draw_slider_bar
+from managers.asset_manager import get_alien_surf
+from managers.ui_manager import InputBox, _draw_slider_bar
 
 
 def _make_star_icon(color):

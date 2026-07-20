@@ -3,14 +3,14 @@ Player ship state, movement, shooting, and rendering.
 """
 import pygame
 import config
-import game.constants as constants
-from game.constants import (
+import constants
+from constants import (
     PLAYER_W, PLAYER_H, GREEN, LIME, DARK_GREEN,
     CYAN, WHITE, ORANGE, YELLOW, LIGHT_GRAY,
     BULLET_W, BULLET_H,
 )
-from game.assets import get_player_ship
-from game.bullet import Bullet
+from managers.asset_manager import get_player_ship
+from entities.bullet import Bullet
 
 
 class Player:

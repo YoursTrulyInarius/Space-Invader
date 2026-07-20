@@ -8,15 +8,15 @@ from datetime import datetime
 
 import config
 from database import Database
-import game.constants as constants
-from game.player import Player
-from game.enemy import Enemy, Boss
-from game.powerup import PowerUp
-from game.ui import PauseMenu
-from game.screens import LeaderboardScreen
+import constants
+from entities.player import Player
+from entities.enemy import Enemy, Boss
+from entities.powerup import PowerUp
+from managers.ui_manager import PauseMenu
+from managers.screen_manager import LeaderboardScreen
 
 
-class Game:
+class GameManager:
     def __init__(self, username="Player", db=None, audio=None):
         self.screen   = pygame.display.get_surface()
         pygame.display.set_caption(f"Space Invaders  |  {username}")

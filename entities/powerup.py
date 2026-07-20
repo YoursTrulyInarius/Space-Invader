@@ -2,9 +2,9 @@
 Power-up object state and rendering.
 """
 import pygame
-import game.constants as constants
-from game.constants import CYAN, RED, PURPLE, WHITE, clamp_color
-from game.assets import get_powerup_icon
+import constants
+from constants import CYAN, RED, PURPLE, WHITE, clamp_color
+from managers.asset_manager import get_powerup_icon
 
 
 class PowerUp:

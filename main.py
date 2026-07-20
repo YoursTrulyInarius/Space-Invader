@@ -3,11 +3,11 @@ import sys
 import config
 from database import Database
 
-import game.constants as constants
-from game.assets import load_game_images
-from game.audio import AudioManager
-from game.screens import ProfileScreen
-from game.game import Game
+import constants
+from managers.asset_manager import load_game_images
+from managers.audio_manager import AudioManager
+from managers.screen_manager import ProfileScreen
+from managers.game_manager import GameManager as Game
 
 # Pre-initialise audio before pygame.init()
 pygame.mixer.pre_init(44100, -16, 2, 1024)

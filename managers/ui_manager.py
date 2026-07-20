@@ -2,8 +2,8 @@
 UI widgets and overlays: InputBox, PauseMenu, and drawing helpers.
 """
 import pygame
-import game.constants as constants
-from game.constants import (
+import constants
+from constants import (
     CYAN, WHITE, GRAY, LIGHT_GRAY, DARK_GRAY, YELLOW, PURPLE,
     draw_glow_rect, draw_text_center
 )

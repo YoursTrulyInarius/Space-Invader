@@ -5,10 +5,10 @@ import random
 import math
 import pygame
 import config
-import game.constants as constants
-from game.constants import ENEMY_W, ENEMY_H, GREEN, YELLOW, RED, PURPLE, LIGHT_GRAY, DARK_GRAY, LIME, WHITE
-from game.assets import get_alien_surf, get_boss_img
-from game.bullet import EnemyBullet
+import constants
+from constants import ENEMY_W, ENEMY_H, GREEN, YELLOW, RED, PURPLE, LIGHT_GRAY, DARK_GRAY, LIME, WHITE
+from managers.asset_manager import get_alien_surf, get_boss_img, get_enemy_ship
+from entities.bullet import EnemyBullet
 
 
 class Enemy:
@@ -54,10 +54,88 @@ class Enemy:
         return None
 
     def draw(self, screen):
+        import math
         bob = 0 if self.anim < 15 else 2
-        sw, sh = self.surf.get_width(), self.surf.get_height()
-        screen.blit(self.surf, (self.x + (self.W - sw) // 2,
-                                 self.y + (self.H - sh) // 2 + bob))
+        img = get_enemy_ship()
+        if img:
+            iw, ih  = img.get_size()
+            draw_x  = self.x + (self.W - iw) // 2
+            draw_y  = self.y + (self.H - ih) // 2 + bob
+            cx_ship = draw_x + iw // 2
+            cy_ship = draw_y + ih // 2
+            t       = self.anim / 30.0
+            pulse   = math.sin(t * math.pi * 2)   # -1 … +1
+
+            # ── 1. Soft filled glow behind ship (SRCALPHA ellipse) ──
+            halo_w = iw + 20 + int(4 * pulse)
+            halo_h = ih + 16 + int(3 * pulse)
+            halo_s = pygame.Surface((halo_w, halo_h), pygame.SRCALPHA)
+            for step, (col, a) in enumerate([
+                ((120, 40, 220), 12),
+                ((80,  20, 180), 20),
+                ((40, 160, 255), 8),
+            ]):
+                r = step + 1
+                pygame.draw.ellipse(halo_s, (*col, a),
+                                    (r * 2, r * 2, halo_w - r * 4, halo_h - r * 4))
+            screen.blit(halo_s, (cx_ship - halo_w // 2, cy_ship - halo_h // 2))
+
+            # ── 2. Apply elliptical mask to clip dark sprite corners ──
+            #    Build a masked copy each frame so the sprite appears to float
+            masked = pygame.Surface((iw, ih), pygame.SRCALPHA)
+            masked.blit(img, (0, 0))
+            # Elliptical alpha mask (white ellipse inside black transparent canvas)
+            mask_s = pygame.Surface((iw, ih), pygame.SRCALPHA)
+            mask_s.fill((0, 0, 0, 0))
+            pygame.draw.ellipse(mask_s, (255, 255, 255, 255), (2, 1, iw - 4, ih - 2))
+            # Feather edges by an inner slightly smaller ellipse with partial alpha
+            for shrink, aa in [(4, 200), (6, 140), (8, 80)]:
+                pygame.draw.ellipse(mask_s, (255, 255, 255, aa),
+                                    (shrink, shrink // 2 + 1,
+                                     iw - shrink * 2, ih - shrink))
+            masked.blit(mask_s, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+            screen.blit(masked, (draw_x, draw_y))
+
+            # ── 3. Glowing cyan tech-border around the ellipse ──
+            rim_col = (int(40 + 40 * pulse), int(200 + 30 * pulse), 255)
+            rim_a   = int(180 + 60 * pulse)
+            rim_s   = pygame.Surface((iw + 4, ih + 4), pygame.SRCALPHA)
+            pygame.draw.ellipse(rim_s, (*rim_col, rim_a), rim_s.get_rect(), 1)
+            pygame.draw.ellipse(rim_s, (*rim_col, rim_a // 2),
+                                (2, 2, iw, ih), 1)
+            screen.blit(rim_s, (draw_x - 2, draw_y - 2))
+
+            # ── 4. Corner tech-accent marks ──
+            accent_col = (160, 255, 255)
+            clen = 3
+            for (px, py, dx, dy) in [
+                (draw_x,          draw_y,      1,  1),
+                (draw_x + iw - 1, draw_y,     -1,  1),
+                (draw_x,          draw_y + ih - 1,  1, -1),
+                (draw_x + iw - 1, draw_y + ih - 1, -1, -1),
+            ]:
+                pygame.draw.line(screen, accent_col, (px, py), (px + dx * clen, py), 1)
+                pygame.draw.line(screen, accent_col, (px, py), (px, py + dy * clen), 1)
+
+            # ── 5. Engine exhaust (dual-ellipse, pulsing) ──
+            eng_alpha = int(110 + 80 * pulse)
+            eng_w     = max(8, iw // 2)
+            eng_h     = max(5, ih // 4)
+            eng_s     = pygame.Surface((eng_w * 2, eng_h * 2), pygame.SRCALPHA)
+            pygame.draw.ellipse(eng_s, (30, 240, 200, eng_alpha),
+                                (0, 0, eng_w * 2, eng_h * 2))
+            pygame.draw.ellipse(eng_s, (210, 255, 255, min(255, eng_alpha + 80)),
+                                (eng_w // 2, eng_h // 2, eng_w, eng_h))
+            screen.blit(eng_s, (cx_ship - eng_w, draw_y + ih - eng_h))
+        else:
+            # Fallback: original pixel-art alien grid
+            bob = 0 if self.anim < 15 else 2
+            sw, sh = self.surf.get_width(), self.surf.get_height()
+            screen.blit(self.surf, (self.x + (self.W - sw) // 2,
+                                     self.y + (self.H - sh) // 2 + bob))
+
+
+
 
 
 class Boss:
