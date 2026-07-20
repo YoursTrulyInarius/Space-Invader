@@ -6,12 +6,11 @@ A retro-style arcade shooter built in Python with Pygame, procedural audio, and 
 Space Invaders: Classic Arcade Edition is a desktop game that combines classic arcade gameplay with a modern structure. The project uses object-oriented design for the game logic, a dedicated database layer for persistence, and procedural audio to keep the package self-contained.
 
 ## Latest Update
-### Version 1.7 — Polished UI, Solar System Title Screen, and Button Icons
-- Added a pixel-style orbiting solar system to the main profile screen while preserving the original starfield background.
-- Reworked the title screen UI with larger central presentation, improved spacing, and cleaner menu button styling.
-- Added icon-enhanced `LEADERBOARD F1` and `SETTINGS F2` buttons for better navigation affordance.
-- Preserved modular game object structure and compatibility shim for `game/entities.py`.
-- Kept the refined enemy destruction audio and boss rendering fixes from the prior refactor.
+### Version 2.0 — Codebase Restructure & Enhanced Visuals
+- **Directory Restructure**: Reorganized project architecture into clean `entities/` and `managers/` modules, moving images under `assets/images/`.
+- **Advanced Bullet Rendering**: Replaced flat bullet sprites with high-quality procedural metallic cyan energy bolts for the player (with trailing plasma and tip sparks) and glowing red plasma shells for enemies.
+- **Improved Enemy Visuals**: Applied dynamic elliptical masking to strip away dark corner borders on enemy ships.
+- **Sci-Fi Effects**: Added pulsing thruster exhaust ellipses, layered tech-glow rings, and corner accents to enemy ships.
 
 ## Features
 - Wave-based gameplay with boss encounters
@@ -36,17 +35,21 @@ Space Invaders: Classic Arcade Edition is a desktop game that combines classic a
 - `main.py`: entry point for the game
 - `database.py`: database wrapper and schema management
 - `config.py`: database and gameplay configuration
-- `game/`: game loop, audio, UI, screens, and object modules
+- `constants.py`: game-wide settings and helper functions
+- `entities/`: game entity classes
   - `player.py`: player ship state, movement, and shooting
-  - `bullet.py`: player and enemy projectile classes
   - `enemy.py`: enemy and boss behavior
+  - `bullet.py`: player and enemy projectile classes
   - `powerup.py`: power-up object logic and rendering
-  - `entities.py`: legacy compatibility shim for imports
-  - `assets.py`: image loading and avatar textures
-  - `audio.py`: procedural sound and music generation
-  - `constants.py`: game-wide settings and helper functions
-  - `screens.py`: menu, leaderboard, and audio settings screens
-  - `ui.py`: pause menu and UI widgets
+- `managers/`: system manager modules
+  - `game_manager.py`: core game manager and event loop
+  - `asset_manager.py`: image loading and asset management
+  - `audio_manager.py`: procedural sound and music generation
+  - `screen_manager.py`: profile, leaderboard, and settings screens
+  - `ui_manager.py`: pause menu and UI widgets
+- `assets/`: game assets
+  - `images/`: game textures, sprites, and background assets
+  - `sounds/`: placeholder for sound resources
 - `schema.sql`: SQL schema reference
 - `tests/`: regression tests for the database layer
 
@@ -83,6 +86,13 @@ python -m unittest discover -s tests -p "test_database.py" -v
 ```
 
 ## Version History
+### Version 2.0
+- Restructured workspace codebase directory layout to separate entities and managers
+- Applied dynamic elliptical masking to hide dark border corners on enemy ship sprites
+- Designed new procedural metallic cyan energy bolts for the player (with trailing plasma and sparks)
+- Designed glowing red plasma artillery shells for the enemy (with pulsing halo and hot core)
+- Relocated PNG game sprites to `assets/images/` and updated loader references
+
 ### Version 1.7
 - Added a pixelated solar system animation to the profile menu screen
 - Polished main menu and button visuals with stronger scene presentation
