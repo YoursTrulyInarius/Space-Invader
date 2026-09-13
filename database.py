@@ -146,9 +146,25 @@ class Database:
         """)
 
     def _create_indexes(self):
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_username ON players(username)")
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_id ON scores(player_id)")
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_score ON scores(score)")
+        indexes = (
+            ('idx_username', 'players', 'username'),
+            ('idx_player_id', 'scores', 'player_id'),
+            ('idx_score', 'scores', 'score'),
+        )
+        for index_name, table_name, column_name in indexes:
+            self.cursor.execute("""
+                SELECT COUNT(*) AS index_count
+                FROM information_schema.statistics
+                WHERE table_schema = %s
+                  AND table_name = %s
+                  AND index_name = %s
+            """, (self.database, table_name, index_name))
+            result = self.cursor.fetchone()
+            if result and result.get('index_count', 0):
+                continue
+            self.cursor.execute(
+                f"CREATE INDEX `{index_name}` ON `{table_name}` (`{column_name}`)"
+            )
 
     def get_or_create_player(self, username):
         """Get an existing player or create a new one."""
