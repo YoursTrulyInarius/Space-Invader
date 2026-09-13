@@ -21,6 +21,8 @@ Space Invaders: Classic Arcade Edition is a desktop game that combines classic a
 - Power-ups including shield, multishot, and extra life
 - Procedural sound effects and background music
 - Persistent player profiles and match history
+- Login and registration with salted password hashes
+- Password visibility eye toggle on the login form
 - Global leaderboard and audio settings screens
 - Offline-safe gameplay when the database is unavailable
 
@@ -156,9 +158,15 @@ On first launch, the database and tables are created automatically when MySQL is
 
 ## Database Schema
 The project uses the following persistent structures:
-- `players`: stores usernames and cumulative player stats
+- `players`: stores usernames, password hashes, and cumulative player stats
 - `scores`: stores per-session score, accuracy, duration, and power-up usage
 - `leaderboard`: a view that returns the top scores for display
+
+When upgrading an existing database, `database_setup.py` adds the `password_hash` column to `players` automatically if it is missing. Existing players created before login support must register a password before they can log in.
+
+## Login and Registration
+
+The profile screen opens in **Login** mode. Enter a callsign and password, then press `Enter` or select **LOGIN**. Select **CREATE ACCOUNT** to register a new player; passwords must contain at least six characters. Select the eye icon inside the password field to show or hide the password while typing.
 
 ## Testing
 

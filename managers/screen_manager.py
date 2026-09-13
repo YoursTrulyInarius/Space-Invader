@@ -388,7 +388,13 @@ class ProfileScreen:
         self.screen  = pygame.display.get_surface()
         self.db      = db
         self.audio   = audio
-        self.input   = InputBox(constants.SCREEN_WIDTH // 2 - 210, constants.SCREEN_HEIGHT // 2 + 20, 420, 46)
+        field_x = constants.SCREEN_WIDTH // 2 - 210
+        field_y = constants.SCREEN_HEIGHT // 2 - 4
+        self.input = InputBox(field_x, field_y, 420, 46, "Enter callsign...")
+        self.password_input = InputBox(
+            field_x, field_y + 62, 420, 46, "Enter password...", password=True
+        )
+        self.mode = 'login'
         self.error   = ""
         self.etimer  = 0
         self.clock   = pygame.time.Clock()
@@ -415,6 +421,43 @@ class ProfileScreen:
             except:
                 pass
         return []
+
+    def _action_rects(self):
+        cx = constants.SCREEN_WIDTH // 2
+        y = constants.SCREEN_HEIGHT // 2 + 126
+        return {
+            'submit': pygame.Rect(cx - 210, y, 200, 42),
+            'mode': pygame.Rect(cx + 10, y, 200, 42),
+        }
+
+    def _submit(self):
+        username = self.input.text.strip()
+        password = self.password_input.text
+        if not username or not password:
+            self.error, self.etimer = "Enter both callsign and password.", 120
+            return None
+        if len(username) > 30:
+            self.error, self.etimer = "Callsign too long! (max 30 chars)", 120
+            return None
+
+        if not self.db or not self.db.connected:
+            self.error, self.etimer = "Database unavailable. Try again later.", 120
+            return None
+
+        if self.mode == 'register':
+            if len(password) < 6:
+                self.error, self.etimer = "Password must be at least 6 characters.", 120
+                return None
+            player_id = self.db.register_player(username, password)
+            if not player_id:
+                self.error, self.etimer = "Registration failed. Callsign may already exist.", 120
+                return None
+            return username
+
+        if self.db.authenticate_player(username, password):
+            return username
+        self.error, self.etimer = "Invalid callsign or password.", 120
+        return None
 
     def _draw_bg(self):
         self.screen.fill(NAVY)
@@ -485,35 +528,31 @@ class ProfileScreen:
                              (constants.SCREEN_WIDTH // 2 - 230, 164),
                              (constants.SCREEN_WIDTH // 2 + 230, 164), 1)
 
-            lbl = fnt_inst.render("ENTER CALLSIGN:", True, LIGHT_GRAY)
+            mode_title = "LOGIN" if self.mode == 'login' else "REGISTER"
+            lbl = fnt_inst.render(mode_title, True, YELLOW)
             self.screen.blit(lbl, (constants.SCREEN_WIDTH // 2 - lbl.get_width() // 2,
-                                   constants.SCREEN_HEIGHT // 2 - 14))
+                                   constants.SCREEN_HEIGHT // 2 - 44))
+            user_lbl = fnt_inst.render("CALLSIGN", True, LIGHT_GRAY)
+            pass_lbl = fnt_inst.render("PASSWORD", True, LIGHT_GRAY)
+            self.screen.blit(user_lbl, (self.input.rect.x, self.input.rect.y - 24))
+            self.screen.blit(pass_lbl, (self.password_input.rect.x, self.password_input.rect.y - 24))
             self.input.draw(self.screen)
+            self.password_input.draw(self.screen)
 
-            for i, n in enumerate(["New callsign  ->  creates a pilot profile",
-                                    "Known callsign ->  loads your history"]):
-                ns = fnt_inst.render(n, True, (115, 125, 155))
-                self.screen.blit(ns, (constants.SCREEN_WIDTH // 2 - ns.get_width() // 2,
-                                     constants.SCREEN_HEIGHT // 2 + 80 + i * 24))
+            hint = fnt_cred.render("Click the eye to show or hide your password.", True, (115, 125, 155))
+            self.screen.blit(hint, (constants.SCREEN_WIDTH // 2 - hint.get_width() // 2,
+                                    self.password_input.rect.bottom + 10))
 
-            if self.players:
-                list_w = min(500, constants.SCREEN_WIDTH - 120)
-                list_h = 24 + min(5, len(self.players)) * 22 + 16
-                list_box = pygame.Rect(constants.SCREEN_WIDTH // 2 - list_w // 2,
-                                       constants.SCREEN_HEIGHT // 2 + 132,
-                                       list_w, list_h)
-                list_surf = pygame.Surface((list_box.width, list_box.height), pygame.SRCALPHA)
-                list_surf.fill((18, 28, 58, 200))
-                pygame.draw.rect(list_surf, (80, 110, 170, 80), list_surf.get_rect(), 1, border_radius=14)
-                self.screen.blit(list_surf, list_box.topleft)
-
-                ty = list_box.y + 12
-                ht = fnt_list.render("KNOWN PILOTS:", True, YELLOW)
-                self.screen.blit(ht, (list_box.centerx - ht.get_width() // 2, ty))
-                for j, p in enumerate(self.players[:5]):
-                    match = self.input.text and p.lower().startswith(self.input.text.lower())
-                    ps = fnt_list.render(f"  {p}", True, GREEN if match else LIGHT_GRAY)
-                    self.screen.blit(ps, (list_box.x + 16, ty + 22 + j * 21))
+            rects = self._action_rects()
+            for key, label in (('submit', mode_title),
+                               ('mode', "CREATE ACCOUNT" if self.mode == 'login' else "BACK TO LOGIN")):
+                rect = rects[key]
+                hov = rect.collidepoint(pygame.mouse.get_pos())
+                pygame.draw.rect(self.screen, (38, 96, 200) if hov else (20, 22, 40), rect, border_radius=8)
+                pygame.draw.rect(self.screen, CYAN if hov else (55, 60, 120), rect, 2, border_radius=8)
+                text = fnt_inst.render(label, True, WHITE)
+                self.screen.blit(text, (rect.centerx - text.get_width() // 2,
+                                        rect.centery - text.get_height() // 2))
 
             if self.etimer > 0:
                 es = fnt_inst.render(self.error, True, RED)
@@ -578,15 +617,28 @@ class ProfileScreen:
                         self.screen = pygame.display.get_surface()
                         constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT = self.screen.get_size()
                         continue
-                res = self.input.handle_event(ev)
-                if res is not None:
-                    name = res.strip()
-                    if not name:
-                        self.error, self.etimer = "Please enter a callsign!", 90
-                    elif len(name) > 30:
-                        self.error, self.etimer = "Too long! (max 30 chars)", 90
-                    else:
-                        return name
+                    rects = self._action_rects()
+                    if rects['submit'].collidepoint(ev.pos):
+                        result = self._submit()
+                        if result:
+                            return result
+                        continue
+                    if rects['mode'].collidepoint(ev.pos):
+                        self.mode = 'register' if self.mode == 'login' else 'login'
+                        self.error = ""
+                        self.password_input.text = ""
+                        continue
+                if ev.type == pygame.KEYDOWN and ev.key == pygame.K_TAB:
+                    self.mode = 'register' if self.mode == 'login' else 'login'
+                    self.error = ""
+                    continue
+                if ev.type == pygame.KEYDOWN and ev.key == pygame.K_RETURN:
+                    result = self._submit()
+                    if result:
+                        return result
+                    continue
+                self.input.handle_event(ev)
+                self.password_input.handle_event(ev)
 
             pygame.display.flip()
             self.clock.tick(60)

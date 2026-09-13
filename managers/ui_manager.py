@@ -23,14 +23,24 @@ def _draw_slider_bar(surface, bar, val, color):
 
 # ── InputBox ──────────────────────────────────────────────────────────────────
 class InputBox:
-    def __init__(self, x, y, w, h, placeholder="Enter callsign..."):
+    def __init__(self, x, y, w, h, placeholder="Enter callsign...", password=False):
         self.rect = pygame.Rect(x, y, w, h)
         self.text = ""
         self.ph   = placeholder
+        self.password = password
+        self.show_password = False
         self.font = pygame.font.SysFont("consolas", 26)
         self.tick = 0
 
+    @property
+    def eye_rect(self):
+        return pygame.Rect(self.rect.right - 42, self.rect.y + 7, 34, self.rect.height - 14)
+
     def handle_event(self, event):
+        if (self.password and event.type == pygame.MOUSEBUTTONDOWN
+            and event.button == 1 and self.eye_rect.collidepoint(event.pos)):
+            self.show_password = not self.show_password
+            return None
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
                 return self.text
@@ -45,12 +55,18 @@ class InputBox:
         draw_glow_rect(surface, (30, 100, 255), self.rect, radius=8, layers=4)
         pygame.draw.rect(surface, CYAN, self.rect, 2, border_radius=8)
         disp = self.text if self.text else self.ph
+        if self.password and self.text and not self.show_password:
+            disp = "*" * len(self.text)
         col  = WHITE if self.text else GRAY
         ts   = self.font.render(disp, True, col)
         ty   = self.rect.centery - ts.get_height() // 2
         surface.blit(ts, (self.rect.x + 12, ty))
+        if self.password:
+            eye = self.eye_rect
+            pygame.draw.ellipse(surface, LIGHT_GRAY, eye.inflate(-12, -12), 2)
+            pygame.draw.circle(surface, CYAN if self.show_password else LIGHT_GRAY, eye.center, 4)
         if self.text and self.tick % 60 < 30:
-            cx = self.rect.x + 12 + self.font.size(self.text)[0] + 2
+            cx = self.rect.x + 12 + self.font.size(disp)[0] + 2
             pygame.draw.line(surface, WHITE, (cx, ty + 2), (cx, ty + ts.get_height() - 2), 2)
 
 

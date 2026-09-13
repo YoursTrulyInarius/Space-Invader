@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS players;
 CREATE TABLE players (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) DEFAULT NULL,
     total_score INT DEFAULT 0,
     total_games_played INT DEFAULT 0,
     total_enemies_killed INT DEFAULT 0,

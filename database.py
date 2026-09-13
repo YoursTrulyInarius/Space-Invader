@@ -1,3 +1,7 @@
+import hashlib
+import hmac
+import secrets
+
 import mysql.connector
 import config
 
@@ -76,6 +80,7 @@ class Database:
 
         try:
             self._create_players_table()
+            self._ensure_password_column()
             self._create_scores_table()
             self._create_leaderboard_view()
             self._create_indexes()
@@ -95,6 +100,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS players (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) DEFAULT NULL,
                 total_score INT DEFAULT 0,
                 total_games_played INT DEFAULT 0,
                 total_enemies_killed INT DEFAULT 0,
@@ -103,6 +109,41 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
+
+    def _ensure_password_column(self):
+        """Add authentication storage to databases created by older versions."""
+        self.cursor.execute("""
+            SELECT COUNT(*) AS column_count
+            FROM information_schema.columns
+            WHERE table_schema = %s
+              AND table_name = 'players'
+              AND column_name = 'password_hash'
+        """, (self.database,))
+        result = self.cursor.fetchone()
+        if not result or not result.get('column_count', 0):
+            self.cursor.execute(
+                "ALTER TABLE players ADD COLUMN password_hash VARCHAR(255) DEFAULT NULL"
+            )
+
+    @staticmethod
+    def _hash_password(password):
+        salt = secrets.token_bytes(16)
+        iterations = 600_000
+        digest = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations)
+        return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
+
+    @staticmethod
+    def _verify_password(password, stored_hash):
+        try:
+            algorithm, iteration_text, salt_hex, digest_hex = stored_hash.split('$')
+            if algorithm != 'pbkdf2_sha256':
+                return False
+            digest = hashlib.pbkdf2_hmac(
+                'sha256', password.encode('utf-8'), bytes.fromhex(salt_hex), int(iteration_text)
+            )
+            return hmac.compare_digest(digest.hex(), digest_hex)
+        except (AttributeError, ValueError):
+            return False
 
     def _create_scores_table(self):
         self.cursor.execute("""
@@ -198,6 +239,40 @@ class Database:
         except mysql.connector.Error as err:
             print(f"[ERR] Error creating player: {err}")
             return None
+
+    def register_player(self, username, password):
+        """Register a player with a salted password hash and return its ID."""
+        if (not self._ensure_connection() or not username or not username.strip()
+                or not password or len(password) < 6):
+            return None
+
+        try:
+            self.cursor.execute(
+                "INSERT INTO players (username, password_hash) VALUES (%s, %s)",
+                (username.strip(), self._hash_password(password)),
+            )
+            self.connection.commit()
+            return self.cursor.lastrowid
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error registering player: {err}")
+            return None
+
+    def authenticate_player(self, username, password):
+        """Return a player ID when the credentials are valid."""
+        if not self._ensure_connection() or not username or not password:
+            return None
+
+        try:
+            self.cursor.execute(
+                "SELECT id, password_hash FROM players WHERE username = %s",
+                (username.strip(),),
+            )
+            player = self.cursor.fetchone()
+            if player and self._verify_password(password, player.get('password_hash')):
+                return player['id']
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error authenticating player: {err}")
+        return None
 
     def get_player(self, username):
         """Return a complete player profile by username."""
