@@ -108,9 +108,15 @@ The `.venv/` directory is ignored by Git and should not be committed.
    }
    ```
 
-3. Run the game or instantiate `Database`. It creates `space_invaders_db`, `players`, `scores`, and `leaderboard` automatically when the configured MySQL user has database-creation permission.
+3. Run the setup script from the project root. It creates `space_invaders_db`, `players`, `scores`, indexes, and `leaderboard` automatically when the configured MySQL user has database-creation permission:
 
-For a manual setup, run [schema.sql](schema.sql) in MySQL:
+  ```powershell
+  python database_setup.py
+  ```
+
+  When using the environment without activation, run `.\.venv\Scripts\python.exe database_setup.py`.
+
+For advanced/manual SQL setup, run [schema.sql](schema.sql) in MySQL:
 
 ```bash
 mysql -u root -p < schema.sql
