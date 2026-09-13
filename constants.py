@@ -4,7 +4,7 @@ Nothing here imports from other game sub-modules, so any module can safely
 import from here without risking circular imports.
 """
 import pygame
-from datetime import datetime
+from datetime import date, datetime
 import config
 
 # ── Screen dimensions (read once from config) ─────────────────────────────────
@@ -67,6 +67,10 @@ def format_display_date(raw):
     Falls back to the raw string if it cannot be parsed."""
     if not raw:
         return ""
+    if isinstance(raw, datetime):
+        return raw.strftime("%b %d, %Y").replace(" 0", " ")
+    if isinstance(raw, date):
+        return raw.strftime("%b %d, %Y").replace(" 0", " ")
     s = str(raw).strip()
     for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
         try:

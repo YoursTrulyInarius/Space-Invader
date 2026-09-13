@@ -179,10 +179,10 @@ class Database:
                 gs.enemies_killed,
                 gs.powerups_collected,
                 gs.accuracy,
-                DATE_FORMAT(gs.game_date, '%%Y-%%m-%%d %%H:%%i') as game_date
+                gs.game_date AS game_date
             FROM scores gs
             JOIN players p ON gs.player_id = p.id
-            ORDER BY gs.score DESC
+            ORDER BY gs.score DESC, gs.game_date DESC
             LIMIT 10
         """)
 
@@ -413,13 +413,16 @@ class Database:
         try:
             self.cursor.execute("""
                 SELECT
-                    username,
-                    score,
-                    enemies_killed,
-                    powerups_collected,
-                    ROUND(accuracy, 2) as accuracy,
-                    game_date
-                FROM leaderboard
+                    p.username,
+                    gs.score,
+                    gs.enemies_killed,
+                    gs.powerups_collected,
+                    ROUND(gs.accuracy, 2) AS accuracy,
+                    gs.game_date
+                FROM scores gs
+                JOIN players p ON gs.player_id = p.id
+                ORDER BY gs.score DESC, gs.game_date DESC
+                LIMIT 10
             """)
             return self.cursor.fetchall()
         except mysql.connector.Error as err:

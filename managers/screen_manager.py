@@ -116,8 +116,10 @@ class LeaderboardScreen:
                          random.uniform(0.3, 1.4),
                          random.randint(1, 2)] for _ in range(90)]
         self.fnt_ttl = pygame.font.SysFont("consolas", 40, bold=True)
+        self.fnt_sub = pygame.font.SysFont("consolas", 15)
         self.fnt_hd  = pygame.font.SysFont("consolas", 16, bold=True)
         self.fnt_row = pygame.font.SysFont("consolas", 17)
+        self.fnt_row_compact = pygame.font.SysFont("consolas", 15)
         self.fnt_sm  = pygame.font.SysFont("consolas", 15)
         self.rank_icons = [
             _make_star_icon((255, 215, 60)),
@@ -133,6 +135,34 @@ class LeaderboardScreen:
             _make_date_icon(CYAN),
         ]
 
+    def _table_layout(self, row_count):
+        compact = constants.SCREEN_WIDTH < 760 or constants.SCREEN_HEIGHT < 560
+        box_w = min(900, constants.SCREEN_WIDTH - 40)
+        box_y = 112 if not compact else 86
+        row_h = 30 if not compact else 27
+        header_h = 66 if not compact else 58
+        visible = max(1, min(10, row_count))
+        max_box_h = max(150, constants.SCREEN_HEIGHT - box_y - 92)
+        box_h = min(header_h + visible * row_h + 18, max_box_h)
+        row_h = max(22, (box_h - header_h - 18) // visible)
+        box_h = header_h + visible * row_h + 18
+        box = pygame.Rect(constants.SCREEN_WIDTH // 2 - box_w // 2, box_y, box_w, box_h)
+        return box, row_h, header_h, compact
+
+    def _draw_table_header(self, box, header_h, compact):
+        centers = [0.055, 0.20, 0.50, 0.64, 0.75, 0.88]
+        labels = ["#", "CALLSIGN", "SCORE", "KILLS", "ACC", "DATE"]
+        font = self.fnt_sm if compact else self.fnt_hd
+        header_y = box.y + 38 if not compact else box.y + 34
+        for icon, label, center in zip(self.header_icons, labels, centers):
+            x = box.x + int(box.width * center)
+            self.screen.blit(icon, (x - icon.get_width() // 2, header_y - 25))
+            text = font.render(label, True, CYAN)
+            self.screen.blit(text, (x - text.get_width() // 2, header_y))
+        pygame.draw.line(self.screen, (55, 82, 145),
+                         (box.x + 18, box.y + header_h),
+                         (box.right - 18, box.y + header_h), 1)
+
     def _draw_bg(self):
         self.screen.fill(NAVY)
         for s in self.stars:
@@ -145,89 +175,76 @@ class LeaderboardScreen:
 
     def run(self):
         online = bool(self.db and self.db.connected)
-        rows   = self.db.get_leaderboard() if online else []
+        rows = list(self.db.get_leaderboard()[:10]) if online else []
 
         while True:
             self.tick += 1
             self._draw_bg()
-            draw_text_center(self.screen, "LEADERBOARD", self.fnt_ttl, YELLOW, 36)
+            compact = constants.SCREEN_WIDTH < 760 or constants.SCREEN_HEIGHT < 560
+            title_font = pygame.font.SysFont("consolas", 32, bold=True) if compact else self.fnt_ttl
+            draw_text_center(self.screen, "LEADERBOARD", title_font, YELLOW, 22 if compact else 36)
+            subtitle = self.fnt_sub.render("TOP 10 PILOTS BY SCORE", True, (100, 170, 255))
+            self.screen.blit(subtitle, (constants.SCREEN_WIDTH // 2 - subtitle.get_width() // 2,
+                                        66 if compact else 84))
             pygame.draw.line(self.screen, (50, 70, 130),
-                             (constants.SCREEN_WIDTH // 2 - 230, 92),
-                             (constants.SCREEN_WIDTH // 2 + 230, 92), 1)
+                             (constants.SCREEN_WIDTH // 2 - 290, 98 if compact else 108),
+                             (constants.SCREEN_WIDTH // 2 + 290, 98 if compact else 108), 1)
 
-            box_w = min(720, constants.SCREEN_WIDTH - 60)
-            n_rows   = min(10, len(rows)) if online and rows else 1
-            content_h = 54 + n_rows * 30 + 20
-            box_h = max(140, min(content_h, constants.SCREEN_HEIGHT - 200))
-            box   = pygame.Rect(constants.SCREEN_WIDTH // 2 - box_w // 2, 116, box_w, box_h)
-            glow_box = box.inflate(14, 14)
-            draw_glow_rect(self.screen, (30, 120, 220), glow_box, radius=18, layers=2)
-            shadow = pygame.Surface((box.width, box.height), pygame.SRCALPHA)
-            shadow.fill((14, 18, 33, 220))
-            pygame.draw.rect(shadow, (70, 75, 140, 80), shadow.get_rect(), 1, border_radius=12)
-            self.screen.blit(shadow, box.topleft)
-            pygame.draw.rect(self.screen, (85, 100, 165), box, 2, border_radius=12)
+            box, row_h, header_h, compact = self._table_layout(len(rows) if rows else 1)
+            draw_glow_rect(self.screen, (30, 120, 220), box.inflate(12, 12), radius=16, layers=2)
+            pygame.draw.rect(self.screen, (10, 18, 40), box, border_radius=12)
+            pygame.draw.rect(self.screen, (62, 108, 190), box, 2, border_radius=12)
+            header_band = pygame.Rect(box.x + 2, box.y + 2, box.width - 4, header_h)
+            pygame.draw.rect(self.screen, (19, 37, 70), header_band, border_radius=9)
 
             if not online:
-                msg = self.fnt_row.render("Offline — no database connection.", True, GRAY)
+                msg = self.fnt_row.render("OFFLINE - NO DATABASE CONNECTION", True, GRAY)
                 self.screen.blit(msg, (box.centerx - msg.get_width() // 2, box.centery - 10))
             elif not rows:
-                msg = self.fnt_row.render("No scores yet. Be the first to set one!", True, GRAY)
+                msg = self.fnt_row.render("NO SCORES YET - BE THE FIRST TO SET ONE", True, GRAY)
                 self.screen.blit(msg, (box.centerx - msg.get_width() // 2, box.centery - 10))
             else:
-                cols = ["#", "CALLSIGN", "SCORE", "KILLS", "ACC", "DATE"]
-                offs = [0.025, 0.075, 0.34, 0.47, 0.575, 0.67]
-                hy   = box.y + 18
-                for idx, (h, off) in enumerate(zip(cols, offs)):
-                    icon = self.header_icons[idx]
-                    icon_x = box.x + int(box.width * off) - icon.get_width() // 2
-                    self.screen.blit(icon, (icon_x, hy - 18))
-                    ht = self.fnt_hd.render(h, True, CYAN)
-                    self.screen.blit(ht, (box.x + int(box.width * off), hy))
-                pygame.draw.line(self.screen, (55, 60, 120),
-                                 (box.x + 14, hy + 26), (box.right - 14, hy + 26), 1)
-
-                ry = hy + 36
-                RANK_COLORS = {0: (255, 215, 60), 1: (200, 205, 215), 2: (200, 140, 80)}
+                self._draw_table_header(box, header_h, compact)
+                starts = [0.04, 0.12, 0.43, 0.58, 0.69, 0.80]
+                ry = box.y + header_h + 8
+                rank_colors = {0: (255, 215, 60), 1: (200, 205, 215), 2: (200, 140, 80)}
                 for i, entry in enumerate(rows[:10]):
                     un = str(entry.get('username', '???'))[:14]
                     sc = entry.get('score', 0)
                     ek = entry.get('enemies_killed', 0)
                     ac = entry.get('accuracy', 0) or 0
-                    dt = format_display_date(entry.get('game_date', ''))
-                    col = RANK_COLORS.get(i, WHITE)
+                    dt = format_display_date(entry.get('game_date', '')) or "--"
+                    col = rank_colors.get(i, WHITE)
 
                     if i % 2 == 1:
-                        stripe = pygame.Rect(box.x + 8, ry - 4, box.width - 16, 28)
-                        s = pygame.Surface(stripe.size, pygame.SRCALPHA)
-                        s.fill((255, 255, 255, 10))
-                        self.screen.blit(s, stripe.topleft)
+                        stripe = pygame.Rect(box.x + 10, ry - 4, box.width - 20, row_h)
+                        pygame.draw.rect(self.screen, (24, 42, 76), stripe, border_radius=4)
 
                     icon_x = box.x + 12
                     if i < len(self.rank_icons):
-                        self.screen.blit(self.rank_icons[i], (icon_x, ry + 1))
+                        self.screen.blit(self.rank_icons[i], (icon_x, ry + max(0, (row_h - 18) // 2)))
                         rank_x = icon_x + 24
                     else:
-                        rank_x = box.x + int(box.width * offs[0])
+                        rank_x = box.x + int(box.width * starts[0])
 
                     vals = [f"{i+1}.", un, str(sc), str(ek), f"{float(ac):.0f}%", dt]
-                    for j, (v, off) in enumerate(zip(vals, offs)):
+                    row_font = self.fnt_row_compact if compact else self.fnt_row
+                    for j, (v, off) in enumerate(zip(vals, starts)):
                         x_pos = rank_x if j == 0 and i < len(self.rank_icons) else box.x + int(box.width * off)
-                        vs = self.fnt_row.render(v, True, col)
+                        vs = row_font.render(v, True, col)
                         self.screen.blit(vs, (x_pos, ry))
-                    ry += 30
-                    if ry > box.bottom - 24:
-                        break
+                    ry += row_h
 
-            back_rect = pygame.Rect(constants.SCREEN_WIDTH // 2 - 75, constants.SCREEN_HEIGHT - 62, 150, 38)
+            back_rect = pygame.Rect(constants.SCREEN_WIDTH // 2 - 82,
+                                    constants.SCREEN_HEIGHT - 62, 164, 38)
             hov = back_rect.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(self.screen, (38, 96, 200) if hov else (20, 22, 40), back_rect, border_radius=8)
             pygame.draw.rect(self.screen, CYAN if hov else (55, 60, 120), back_rect, 2, border_radius=8)
-            bt = self.fnt_row.render("< BACK", True, WHITE)
+            bt = self.fnt_row.render("BACK TO MENU", True, WHITE)
             self.screen.blit(bt, (back_rect.centerx - bt.get_width() // 2,
                                   back_rect.centery - bt.get_height() // 2))
 
-            hint = self.fnt_sm.render("ESC / click BACK to return to the main menu", True, GRAY)
+            hint = self.fnt_sm.render("ESC / click BACK to return", True, GRAY)
             self.screen.blit(hint, (constants.SCREEN_WIDTH // 2 - hint.get_width() // 2, constants.SCREEN_HEIGHT - 22))
 
             for ev in pygame.event.get():
