@@ -14,6 +14,9 @@ Space Invaders: Classic Arcade Edition is a desktop game that combines classic a
 - Added `requirements.txt` and a project-local `.venv` workflow.
 - Preserved offline-safe gameplay when MySQL is unavailable.
 - Reorganized game entities and managers, with procedural visuals, audio, power-ups, and boss encounters.
+- Redesigned the login and registration screen with a responsive foreground panel and compact-window layout.
+- Added complete keyboard focus navigation across callsign, password, login/register, and account-mode controls.
+- Added Enter-key activation for the currently focused authentication action.
 
 ## Features
 - Wave-based gameplay with boss encounters
@@ -34,6 +37,7 @@ Space Invaders: Classic Arcade Edition is a desktop game that combines classic a
 - F2: Open audio settings
 - R: Restart after game over
 - D: Return to the profile screen
+- Tab / Shift+Tab: Move through profile-screen controls
 - Q: Quit
 
 ## Project Structure

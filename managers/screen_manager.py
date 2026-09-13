@@ -388,13 +388,10 @@ class ProfileScreen:
         self.screen  = pygame.display.get_surface()
         self.db      = db
         self.audio   = audio
-        field_x = constants.SCREEN_WIDTH // 2 - 210
-        field_y = constants.SCREEN_HEIGHT // 2 - 106
-        self.input = InputBox(field_x, field_y, 420, 46, "Enter callsign...")
-        self.password_input = InputBox(
-            field_x, field_y + 78, 420, 46, "Enter password...", password=True
-        )
-        self.input.focused = True
+        self.input = InputBox(0, 0, 420, 46, "Enter callsign...")
+        self.password_input = InputBox(0, 0, 420, 46, "Enter password...", password=True)
+        self.focus_index = 0
+        self._layout_auth()
         self.mode = 'login'
         self.error   = ""
         self.etimer  = 0
@@ -414,6 +411,24 @@ class ProfileScreen:
         self.icon_leaderboard = _make_leaderboard_icon(LIGHT_GRAY)
         self.icon_settings    = _make_settings_icon(LIGHT_GRAY)
 
+    def _layout_auth(self):
+        compact = constants.SCREEN_HEIGHT < 500
+        width = min(500, constants.SCREEN_WIDTH - 40)
+        field_width = width - 48
+        field_height = 40 if compact else 46
+        panel_top = 58 if compact else 188
+        field_y = panel_top + (38 if compact else 56)
+        field_gap = 52 if compact else 72
+        field_x = constants.SCREEN_WIDTH // 2 - field_width // 2
+        self.input.rect = pygame.Rect(field_x, field_y, field_width, field_height)
+        self.password_input.rect = pygame.Rect(field_x, field_y + field_gap, field_width, field_height)
+        self._set_focus(self.focus_index)
+
+    def _set_focus(self, index):
+        self.focus_index = index % 4
+        self.input.focused = self.focus_index == 0
+        self.password_input.focused = self.focus_index == 1
+
     def _load_players(self):
         if self.db and self.db.connected:
             try:
@@ -424,11 +439,15 @@ class ProfileScreen:
         return []
 
     def _action_rects(self):
-        y = self.password_input.rect.bottom + 28
+        compact = constants.SCREEN_HEIGHT < 500
+        y = self.password_input.rect.bottom + (12 if compact else 28)
         cx = constants.SCREEN_WIDTH // 2
+        button_width = min(220, (constants.SCREEN_WIDTH - 60) // 2)
+        button_height = 38 if compact else 46
+        gap = 12
         return {
-            'submit': pygame.Rect(cx - 210, y, 200, 42),
-            'mode': pygame.Rect(cx + 10, y, 200, 42),
+            'submit': pygame.Rect(cx - button_width - gap // 2, y, button_width, button_height),
+            'mode': pygame.Rect(cx + gap // 2, y, button_width, button_height),
         }
 
     def _submit(self):
@@ -516,23 +535,36 @@ class ProfileScreen:
 
         while True:
             self.tick += 1
+            self._layout_auth()
             self._draw_bg()
             self._draw_solar_system()
             self._draw_alien_parade()
 
             pulse = abs((self.tick % 120) - 60) / 60
             tc    = (255, int(192 + 63 * pulse), int(20 * pulse))
-            draw_text_center(self.screen, "SPACE INVADERS", fnt_title, tc, 64)
+            compact = constants.SCREEN_HEIGHT < 500
+            title_font = fnt_title if not compact else pygame.font.SysFont("consolas", 34, bold=True)
+            draw_text_center(self.screen, "SPACE INVADERS", title_font, tc, 12 if compact else 64)
             draw_text_center(self.screen, "-- CLASSIC ARCADE EDITION --",
-                             fnt_sub, (100, 155, 255), 136)
+                             fnt_sub if not compact else pygame.font.SysFont("consolas", 14),
+                             (100, 155, 255), 56 if compact else 136)
             pygame.draw.line(self.screen, (50, 70, 130),
-                             (constants.SCREEN_WIDTH // 2 - 230, 164),
-                             (constants.SCREEN_WIDTH // 2 + 230, 164), 1)
+                             (constants.SCREEN_WIDTH // 2 - 230, 82 if compact else 164),
+                             (constants.SCREEN_WIDTH // 2 + 230, 82 if compact else 164), 1)
+
+            rects = self._action_rects()
+            panel_top = 48 if compact else 180
+            panel_bottom = rects['mode'].bottom + (38 if compact else 60)
+            panel_width = min(500, constants.SCREEN_WIDTH - 40)
+            panel = pygame.Rect(constants.SCREEN_WIDTH // 2 - panel_width // 2,
+                                panel_top, panel_width, panel_bottom - panel_top)
+            pygame.draw.rect(self.screen, (10, 14, 32), panel, border_radius=14)
+            pygame.draw.rect(self.screen, (48, 76, 145), panel, 2, border_radius=14)
 
             mode_title = "LOGIN" if self.mode == 'login' else "REGISTER"
             lbl = fnt_inst.render(mode_title, True, YELLOW)
             self.screen.blit(lbl, (constants.SCREEN_WIDTH // 2 - lbl.get_width() // 2,
-                                   constants.SCREEN_HEIGHT // 2 - 44))
+                                   panel_top + 12 if compact else panel_top + 16))
             user_lbl = fnt_inst.render("CALLSIGN", True, LIGHT_GRAY)
             pass_lbl = fnt_inst.render("PASSWORD", True, LIGHT_GRAY)
             self.screen.blit(user_lbl, (self.input.rect.x, self.input.rect.y - 24))
@@ -540,17 +572,19 @@ class ProfileScreen:
             self.input.draw(self.screen)
             self.password_input.draw(self.screen)
 
-            hint = fnt_cred.render("Click the eye to show or hide your password.", True, (115, 125, 155))
-            self.screen.blit(hint, (constants.SCREEN_WIDTH // 2 - hint.get_width() // 2,
-                                    self.password_input.rect.bottom + 10))
+            if not compact:
+                hint = fnt_cred.render("Click the eye to show or hide your password.", True, (115, 125, 155))
+                self.screen.blit(hint, (constants.SCREEN_WIDTH // 2 - hint.get_width() // 2,
+                                        self.password_input.rect.bottom + 10))
 
-            rects = self._action_rects()
             for key, label in (('submit', mode_title),
                                ('mode', "CREATE ACCOUNT" if self.mode == 'login' else "BACK TO LOGIN")):
                 rect = rects[key]
                 hov = rect.collidepoint(pygame.mouse.get_pos())
-                pygame.draw.rect(self.screen, (38, 96, 200) if hov else (20, 22, 40), rect, border_radius=8)
-                pygame.draw.rect(self.screen, CYAN if hov else (55, 60, 120), rect, 2, border_radius=8)
+                focused = (key == 'submit' and self.focus_index == 2) or (key == 'mode' and self.focus_index == 3)
+                active = hov or focused
+                pygame.draw.rect(self.screen, (38, 96, 200) if active else (20, 22, 40), rect, border_radius=8)
+                pygame.draw.rect(self.screen, CYAN if active else (55, 60, 120), rect, 2, border_radius=8)
                 text = fnt_inst.render(label, True, WHITE)
                 self.screen.blit(text, (rect.centerx - text.get_width() // 2,
                                         rect.centery - text.get_height() // 2))
@@ -558,11 +592,12 @@ class ProfileScreen:
             if self.etimer > 0:
                 es = fnt_inst.render(self.error, True, RED)
                 self.screen.blit(es, (constants.SCREEN_WIDTH // 2 - es.get_width() // 2,
-                                       constants.SCREEN_HEIGHT // 2 + 72))
+                                       rects['mode'].bottom + 8))
                 self.etimer -= 1
 
-            cs = fnt_cred.render("DEVELOPED BY: CABARDO, SONJEEV C.", True, (60, 65, 90))
-            self.screen.blit(cs, (constants.SCREEN_WIDTH // 2 - cs.get_width() // 2, constants.SCREEN_HEIGHT - 26))
+            if not compact:
+                cs = fnt_cred.render("DEVELOPED BY: CABARDO, SONJEEV C.", True, (60, 65, 90))
+                self.screen.blit(cs, (constants.SCREEN_WIDTH // 2 - cs.get_width() // 2, constants.SCREEN_HEIGHT - 26))
 
             # ── Leaderboard / Settings buttons (slim row, above the title) ───
             btn_w, btn_h, gap = 150, 30, 10
@@ -620,31 +655,38 @@ class ProfileScreen:
                         continue
                     rects = self._action_rects()
                     if rects['submit'].collidepoint(ev.pos):
+                        self._set_focus(2)
                         result = self._submit()
                         if result:
                             return result
                         continue
                     if rects['mode'].collidepoint(ev.pos):
+                        self._set_focus(3)
                         self.mode = 'register' if self.mode == 'login' else 'login'
                         self.error = ""
                         self.password_input.text = ""
                         continue
                 if ev.type == pygame.KEYDOWN and ev.key == pygame.K_TAB:
                     backwards = bool(ev.mod & pygame.KMOD_SHIFT)
-                    if backwards:
-                        self.input.focused = not self.input.focused
-                        self.password_input.focused = not self.input.focused
-                    else:
-                        self.password_input.focused = self.input.focused
-                        self.input.focused = not self.password_input.focused
+                    self._set_focus(self.focus_index - 1 if backwards else self.focus_index + 1)
                     self.input.select_all = False
                     self.password_input.select_all = False
                     continue
                 if ev.type == pygame.KEYDOWN and ev.key == pygame.K_RETURN:
+                    if self.focus_index == 3:
+                        self.mode = 'register' if self.mode == 'login' else 'login'
+                        self.error = ""
+                        self.password_input.text = ""
+                        continue
                     result = self._submit()
                     if result:
                         return result
                     continue
+                if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    if self.input.rect.collidepoint(ev.pos):
+                        self._set_focus(0)
+                    elif self.password_input.rect.collidepoint(ev.pos):
+                        self._set_focus(1)
                 self.input.handle_event(ev)
                 self.password_input.handle_event(ev)
 
