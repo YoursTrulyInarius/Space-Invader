@@ -389,11 +389,12 @@ class ProfileScreen:
         self.db      = db
         self.audio   = audio
         field_x = constants.SCREEN_WIDTH // 2 - 210
-        field_y = constants.SCREEN_HEIGHT // 2 - 4
+        field_y = constants.SCREEN_HEIGHT // 2 - 106
         self.input = InputBox(field_x, field_y, 420, 46, "Enter callsign...")
         self.password_input = InputBox(
-            field_x, field_y + 62, 420, 46, "Enter password...", password=True
+            field_x, field_y + 78, 420, 46, "Enter password...", password=True
         )
+        self.input.focused = True
         self.mode = 'login'
         self.error   = ""
         self.etimer  = 0
@@ -423,8 +424,8 @@ class ProfileScreen:
         return []
 
     def _action_rects(self):
+        y = self.password_input.rect.bottom + 28
         cx = constants.SCREEN_WIDTH // 2
-        y = constants.SCREEN_HEIGHT // 2 + 126
         return {
             'submit': pygame.Rect(cx - 210, y, 200, 42),
             'mode': pygame.Rect(cx + 10, y, 200, 42),
@@ -629,8 +630,15 @@ class ProfileScreen:
                         self.password_input.text = ""
                         continue
                 if ev.type == pygame.KEYDOWN and ev.key == pygame.K_TAB:
-                    self.mode = 'register' if self.mode == 'login' else 'login'
-                    self.error = ""
+                    backwards = bool(ev.mod & pygame.KMOD_SHIFT)
+                    if backwards:
+                        self.input.focused = not self.input.focused
+                        self.password_input.focused = not self.input.focused
+                    else:
+                        self.password_input.focused = self.input.focused
+                        self.input.focused = not self.password_input.focused
+                    self.input.select_all = False
+                    self.password_input.select_all = False
                     continue
                 if ev.type == pygame.KEYDOWN and ev.key == pygame.K_RETURN:
                     result = self._submit()

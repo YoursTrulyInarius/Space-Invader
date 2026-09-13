@@ -29,6 +29,8 @@ class InputBox:
         self.ph   = placeholder
         self.password = password
         self.show_password = False
+        self.focused = False
+        self.select_all = False
         self.font = pygame.font.SysFont("consolas", 26)
         self.tick = 0
 
@@ -37,35 +39,59 @@ class InputBox:
         return pygame.Rect(self.rect.right - 42, self.rect.y + 7, 34, self.rect.height - 14)
 
     def handle_event(self, event):
-        if (self.password and event.type == pygame.MOUSEBUTTONDOWN
-            and event.button == 1 and self.eye_rect.collidepoint(event.pos)):
-            self.show_password = not self.show_password
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.password and self.eye_rect.collidepoint(event.pos):
+                self.show_password = not self.show_password
+                self.focused = True
+                self.select_all = False
+                return None
+            self.focused = self.rect.collidepoint(event.pos)
+            self.select_all = False
             return None
+
+        if not self.focused:
+            return None
+
         if event.type == pygame.KEYDOWN:
+            if event.mod & pygame.KMOD_CTRL and event.key == pygame.K_a:
+                self.select_all = True
+                return None
             if event.key == pygame.K_RETURN:
                 return self.text
             elif event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
+                if self.select_all:
+                    self.text = ""
+                    self.select_all = False
+                else:
+                    self.text = self.text[:-1]
             elif len(self.text) < 30 and event.unicode.isprintable():
+                if self.select_all:
+                    self.text = ""
+                    self.select_all = False
                 self.text += event.unicode
+            return None
         return None
 
     def draw(self, surface):
         self.tick += 1
-        draw_glow_rect(surface, (30, 100, 255), self.rect, radius=8, layers=4)
-        pygame.draw.rect(surface, CYAN, self.rect, 2, border_radius=8)
+        draw_glow_rect(surface, (30, 100, 255), self.rect, radius=8, layers=4 if self.focused else 2)
+        pygame.draw.rect(surface, CYAN if self.focused else (55, 60, 120), self.rect, 2, border_radius=8)
         disp = self.text if self.text else self.ph
         if self.password and self.text and not self.show_password:
             disp = "*" * len(self.text)
         col  = WHITE if self.text else GRAY
         ts   = self.font.render(disp, True, col)
         ty   = self.rect.centery - ts.get_height() // 2
+        text_x = self.rect.x + 12
+        if self.select_all and self.text:
+            selection = pygame.Rect(text_x - 3, ty - 2, ts.get_width() + 6, ts.get_height() + 4)
+            pygame.draw.rect(surface, (74, 154, 255), selection, border_radius=3)
         surface.blit(ts, (self.rect.x + 12, ty))
         if self.password:
             eye = self.eye_rect
             pygame.draw.ellipse(surface, LIGHT_GRAY, eye.inflate(-12, -12), 2)
             pygame.draw.circle(surface, CYAN if self.show_password else LIGHT_GRAY, eye.center, 4)
-        if self.text and self.tick % 60 < 30:
+        if self.text and not self.select_all and self.tick % 60 < 30:
             cx = self.rect.x + 12 + self.font.size(disp)[0] + 2
             pygame.draw.line(surface, WHITE, (cx, ty + 2), (cx, ty + ts.get_height() - 2), 2)
 
