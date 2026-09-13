@@ -48,13 +48,13 @@ class DatabaseTests(unittest.TestCase):
         db = Database.__new__(Database)
         db.connection = connection
         db.cursor = cursor
-        db.database = "space_invaders"
+        db.database = "space_invaders_db"
 
         db.initialize_schema()
 
         queries = [query for query, _ in cursor.queries]
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS players" in query for query in queries))
-        self.assertTrue(any("CREATE TABLE IF NOT EXISTS game_sessions" in query for query in queries))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS scores" in query for query in queries))
         self.assertTrue(any("CREATE VIEW leaderboard" in query for query in queries))
         self.assertGreaterEqual(connection.commits, 1)
 

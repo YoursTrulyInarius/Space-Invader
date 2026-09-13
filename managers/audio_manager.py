@@ -3,14 +3,16 @@ AudioManager – synthesises retro SFX and BGM at runtime using numpy.
 Gracefully disables itself (no-op) when numpy is not installed.
 """
 import pygame
+from settings import Settings
 
 
 class AudioManager:
     """Generates retro SFX with numpy (graceful no-op if numpy missing)."""
 
     def __init__(self):
-        self.sfx_vol   = 0.65
-        self.music_vol = 0.35
+        self.settings  = Settings()
+        self.sfx_vol   = self.settings.get('sfx_volume', 0.65)
+        self.music_vol = self.settings.get('music_volume', 0.35)
         self.sounds    = {}
         self._init()
 
@@ -96,12 +98,16 @@ class AudioManager:
 
     def set_sfx_vol(self, v):
         self.sfx_vol = max(0.0, min(1.0, v))
+        self.settings.set('sfx_volume', self.sfx_vol)
+        self.settings.save()
         for name, snd in self.sounds.items():
             if name != 'bgm':
                 snd.set_volume(self.sfx_vol)
 
     def set_music_vol(self, v):
         self.music_vol = max(0.0, min(1.0, v))
+        self.settings.set('music_volume', self.music_vol)
+        self.settings.save()
         if 'bgm' in self.sounds:
             self.sounds['bgm'].set_volume(self.music_vol)
 

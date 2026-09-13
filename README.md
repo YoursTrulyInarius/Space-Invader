@@ -5,12 +5,15 @@ A retro-style arcade shooter built in Python with Pygame, procedural audio, and 
 ## Overview
 Space Invaders: Classic Arcade Edition is a desktop game that combines classic arcade gameplay with a modern structure. The project uses object-oriented design for the game logic, a dedicated database layer for persistence, and procedural audio to keep the package self-contained.
 
-## Latest Update
-### Version 2.0 — Codebase Restructure & Enhanced Visuals
-- **Directory Restructure**: Reorganized project architecture into clean `entities/` and `managers/` modules, moving images under `assets/images/`.
-- **Advanced Bullet Rendering**: Replaced flat bullet sprites with high-quality procedural metallic cyan energy bolts for the player (with trailing plasma and tip sparks) and glowing red plasma shells for enemies.
-- **Improved Enemy Visuals**: Applied dynamic elliptical masking to strip away dark corner borders on enemy ships.
-- **Sci-Fi Effects**: Added pulsing thruster exhaust ellipses, layered tech-glow rings, and corner accents to enemy ships.
+## Latest Changes
+- Added MySQL connectivity through `mysql-connector-python`.
+- Added automatic creation of the `space_invaders_db` database and its schema.
+- Added `players` and `scores` tables plus the `leaderboard` view.
+- Added player CRUD operations, score saving, leaderboard loading, player history, and profile updates in `database.py`.
+- Added `settings.py` and `settings.json` for persistent sound volume and mobile-control preferences.
+- Added `requirements.txt` and a project-local `.venv` workflow.
+- Preserved offline-safe gameplay when MySQL is unavailable.
+- Reorganized game entities and managers, with procedural visuals, audio, power-ups, and boss encounters.
 
 ## Features
 - Wave-based gameplay with boss encounters
@@ -53,50 +56,113 @@ Space Invaders: Classic Arcade Edition is a desktop game that combines classic a
 - `schema.sql`: SQL schema reference
 - `tests/`: regression tests for the database layer
 
-## Installation
+## Requirements
 
-Follow these step-by-step instructions to set up and run the game:
+- Windows, macOS, or Linux
+- Python 3.11 or newer
+- MySQL Server 8.x or compatible MySQL installation
+- Git
 
-1. **Open Git**: Launch your Git command line interface (such as Git Bash) or your system terminal.
-2. **Copy the Clone Command**: Copy the cloning command below:
-   ```bash
-   git clone https://github.com/YoursTrulyInarius/Space-Invader.git
+The game can open without MySQL, but profiles, scores, and leaderboards require a running MySQL server.
+
+## Clone the Project
+
+```bash
+git clone https://github.com/YoursTrulyInarius/Space-Invader.git
+cd Space-Invader
+```
+
+Open the cloned folder in VS Code, then create the virtual environment from the project root.
+
+## Virtual Environment Setup
+
+PowerShell:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+If PowerShell blocks script activation, run the project without activation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py
+```
+
+The `.venv/` directory is ignored by Git and should not be committed.
+
+## Database Setup
+
+1. Start MySQL Server.
+2. Open [config.py](config.py) and set the MySQL host, username, password, and database if needed:
+
+   ```python
+   DB_CONFIG = {
+     'host': 'localhost',
+     'user': 'root',
+     'password': 'your_mysql_password',
+     'database': 'space_invaders_db'
+   }
    ```
-3. **Clone the Repository**: Run the command in your terminal to download the project files, and navigate into the project folder:
-   ```bash
-   git clone https://github.com/YoursTrulyInarius/Space-Invader.git
-   cd Space-Invader
-   ```
-4. **Open in VS Code**: Open Visual Studio Code, go to **File > Open Folder...**, and select the cloned `Space-Invader` folder.
-5. **Install Dependencies**: Open the integrated terminal in VS Code and install `numpy`, `mysql-connector-python`, and `pygame` using pip:
-   ```bash
-   pip install numpy mysql-connector-python pygame
-   ```
 
-## Configuration
-Update the connection settings in `config.py` before running the game.
+3. Run the game or instantiate `Database`. It creates `space_invaders_db`, `players`, `scores`, and `leaderboard` automatically when the configured MySQL user has database-creation permission.
 
-## Running the Game
-From the project root, run:
+For a manual setup, run [schema.sql](schema.sql) in MySQL:
+
+```bash
+mysql -u root -p < schema.sql
+```
+
+`schema.sql` is intended as a clean rebuild script and drops the existing `scores`, `players`, and `leaderboard` objects. Back up production data before using it.
+
+### Test the Connection and Insert a Player
+
+With `.venv` active, run:
+
+```powershell
+python -c "from database import Database; db = Database(); player_id = db.create_player('test_player'); print('inserted player:', player_id); db.close()"
+```
+
+The command should print the inserted player ID. Because usernames are unique, remove `test_player` or use another username before repeating the command.
+
+## Local Settings
+
+`settings.json` stores local preferences:
+
+- `sfx_volume`: sound-effect volume from `0.0` to `1.0`
+- `music_volume`: music volume from `0.0` to `1.0`
+- `mobile_controls`: reserved toggle for mobile input support
+
+The audio settings screen saves volume changes automatically. The file contains no database credentials.
+
+## Run the Game
+
+From the project root, with `.venv` active:
 
 ```bash
 python main.py
 ```
 
-On first launch, the database tables and leaderboard view are created automatically if needed.
+On first launch, the database and tables are created automatically when MySQL is available. If MySQL is unavailable, the game remains playable without persistent data.
 
 ## Database Schema
 The project uses the following persistent structures:
 - `players`: stores usernames and cumulative player stats
-- `game_sessions`: stores per-session score, accuracy, duration, and power-up usage
+- `scores`: stores per-session score, accuracy, duration, and power-up usage
 - `leaderboard`: a view that returns the top scores for display
 
 ## Testing
-A basic regression test is included for schema initialization:
+
+Run the database regression tests with the virtual-environment interpreter:
 
 ```bash
-python -m unittest discover -s tests -p "test_database.py" -v
+python -m unittest discover -s tests -p "test_*.py" -v
 ```
+
+The tests use lightweight fakes for schema initialization and do not require a live MySQL server.
 
 ## Version History
 ### Version 2.0

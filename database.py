@@ -76,7 +76,7 @@ class Database:
 
         try:
             self._create_players_table()
-            self._create_game_sessions_table()
+            self._create_scores_table()
             self._create_leaderboard_view()
             self._create_indexes()
             self.connection.commit()
@@ -104,9 +104,9 @@ class Database:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
-    def _create_game_sessions_table(self):
+    def _create_scores_table(self):
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS game_sessions (
+            CREATE TABLE IF NOT EXISTS scores (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 player_id INT NOT NULL,
                 score INT DEFAULT 0,
@@ -124,6 +124,10 @@ class Database:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
+    def _create_game_sessions_table(self):
+        """Backward-compatible schema alias for older callers."""
+        return self._create_scores_table()
+
     def _create_leaderboard_view(self):
         self.cursor.execute("DROP VIEW IF EXISTS leaderboard")
         self.cursor.execute("""
@@ -135,7 +139,7 @@ class Database:
                 gs.powerups_collected,
                 gs.accuracy,
                 DATE_FORMAT(gs.game_date, '%%Y-%%m-%%d %%H:%%i') as game_date
-            FROM game_sessions gs
+            FROM scores gs
             JOIN players p ON gs.player_id = p.id
             ORDER BY gs.score DESC
             LIMIT 10
@@ -143,8 +147,8 @@ class Database:
 
     def _create_indexes(self):
         self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_username ON players(username)")
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_id ON game_sessions(player_id)")
-        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_score ON game_sessions(score)")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_id ON scores(player_id)")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_score ON scores(score)")
 
     def get_or_create_player(self, username):
         """Get an existing player or create a new one."""
@@ -158,13 +162,74 @@ class Database:
             if result:
                 return result['id']
 
-            self.cursor.execute("INSERT INTO players (username) VALUES (%s)", (username,))
-            self.connection.commit()
-            return self.cursor.lastrowid
-
+            return self.create_player(username)
         except mysql.connector.Error as err:
             print(f"[ERR] Error getting/creating player: {err}")
             return None
+
+    def create_player(self, username):
+        """Create a player profile and return its ID, or None if it fails."""
+        if not self._ensure_connection() or not username or not username.strip():
+            return None
+
+        try:
+            self.cursor.execute(
+                "INSERT INTO players (username) VALUES (%s)",
+                (username.strip(),),
+            )
+            self.connection.commit()
+            return self.cursor.lastrowid
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error creating player: {err}")
+            return None
+
+    def get_player(self, username):
+        """Return a complete player profile by username."""
+        if not self._ensure_connection():
+            return None
+
+        try:
+            self.cursor.execute("SELECT * FROM players WHERE username = %s", (username,))
+            return self.cursor.fetchone()
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error fetching player: {err}")
+            return None
+
+    def update_player_profile(self, player_id, username):
+        """Update a player's username and return whether it succeeded."""
+        if not self._ensure_connection() or not username or not username.strip():
+            return False
+
+        try:
+            self.cursor.execute(
+                "UPDATE players SET username = %s WHERE id = %s",
+                (username.strip(), player_id),
+            )
+            self.connection.commit()
+            return self.cursor.rowcount > 0
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error updating player profile: {err}")
+            return False
+
+    def delete_player(self, player_id):
+        """Delete a player and their scores."""
+        if not self._ensure_connection():
+            return False
+
+        try:
+            self.cursor.execute("DELETE FROM players WHERE id = %s", (player_id,))
+            self.connection.commit()
+            return self.cursor.rowcount > 0
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error deleting player: {err}")
+            return False
+
+    def save_score(self, player_id, stats):
+        """Save a completed game score and update the player's totals."""
+        game_id = self.start_game_session(player_id)
+        if not game_id:
+            return None
+        return game_id if self.update_game_session(game_id, player_id, stats) else None
 
     def start_game_session(self, player_id):
         """Create a new game session record."""
@@ -173,7 +238,7 @@ class Database:
 
         try:
             self.cursor.execute("""
-                INSERT INTO game_sessions (player_id)
+                INSERT INTO scores (player_id)
                 VALUES (%s)
             """, (player_id,))
             self.connection.commit()
@@ -199,7 +264,7 @@ class Database:
             )
 
             self.cursor.execute("""
-                UPDATE game_sessions
+                UPDATE scores
                 SET score = %s,
                     enemies_killed = %s,
                     powerups_collected = %s,
@@ -270,6 +335,10 @@ class Database:
             print(f"[ERR] Error fetching leaderboard: {err}")
             return []
 
+    def load_leaderboard(self):
+        """Explicit CRUD-facing alias for loading the top scores."""
+        return self.get_leaderboard()
+
     def get_player_stats(self, username):
         """Get player statistics."""
         if not self._ensure_connection():
@@ -306,7 +375,7 @@ class Database:
                     ROUND(accuracy, 2) as accuracy,
                     game_duration,
                     DATE_FORMAT(game_date, '%%Y-%%m-%%d %%H:%%i') as game_date
-                FROM game_sessions gs
+                FROM scores gs
                 JOIN players p ON gs.player_id = p.id
                 WHERE p.username = %s
                 ORDER BY gs.game_date DESC

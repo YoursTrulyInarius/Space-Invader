@@ -1,9 +1,10 @@
 -- Create database (if it doesn't exist)
-CREATE DATABASE IF NOT EXISTS space_invaders;
-USE space_invaders;
+CREATE DATABASE IF NOT EXISTS space_invaders_db;
+USE space_invaders_db;
 
 -- Drop tables if they exist (in correct order to avoid foreign key issues)
-DROP TABLE IF EXISTS game_sessions;
+DROP VIEW IF EXISTS leaderboard;
+DROP TABLE IF EXISTS scores;
 DROP TABLE IF EXISTS players;
 
 -- Create players table
@@ -18,8 +19,8 @@ CREATE TABLE players (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Create game_sessions table
-CREATE TABLE game_sessions (
+-- Create scores table
+CREATE TABLE scores (
     id INT AUTO_INCREMENT PRIMARY KEY,
     player_id INT NOT NULL,
     score INT DEFAULT 0,
@@ -45,13 +46,13 @@ SELECT
     gs.powerups_collected,
     gs.accuracy,
     DATE_FORMAT(gs.game_date, '%Y-%m-%d %H:%i') as game_date
-FROM game_sessions gs
+FROM scores gs
 JOIN players p ON gs.player_id = p.id
 ORDER BY gs.score DESC
 LIMIT 10;
 
 -- Optional: Create indexes for better performance
 CREATE INDEX idx_username ON players(username);
-CREATE INDEX idx_player_id ON game_sessions(player_id);
-CREATE INDEX idx_score ON game_sessions(score);
-CREATE INDEX idx_game_date ON game_sessions(game_date);
+CREATE INDEX idx_player_id ON scores(player_id);
+CREATE INDEX idx_score ON scores(score);
+CREATE INDEX idx_game_date ON scores(game_date);

@@ -3,7 +3,7 @@ DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
     'password': '',  # Update with your MySQL password
-    'database': 'space_invaders'
+    'database': 'space_invaders_db'
 }
 
 # Game Settings
