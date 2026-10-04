@@ -6,7 +6,10 @@ import math
 import pygame
 import config
 import constants
-from constants import ENEMY_W, ENEMY_H, GREEN, YELLOW, RED, PURPLE, LIGHT_GRAY, DARK_GRAY, LIME, WHITE
+from constants import (
+    ENEMY_W, ENEMY_H, GREEN, YELLOW, RED, PURPLE, DARK_GRAY, LIME, WHITE,
+    CYAN, ORANGE, draw_glow_rect,
+)
 from managers.asset_manager import get_alien_surf, get_boss_img, get_enemy_ship
 from entities.bullet import EnemyBullet
 
@@ -139,7 +142,7 @@ class Enemy:
 
 
 class Boss:
-    W, H = 140, 90
+    W, H = 160, 130
 
     def __init__(self, max_hp=30, level=1):
         self.x        = constants.SCREEN_WIDTH // 2 - self.W // 2
@@ -152,6 +155,7 @@ class Boss:
         self.sh_timer = 60
         self.anim     = 0
         self.level    = level
+        self.boss_number = (level - 1) % 4 + 1
         self.img      = get_boss_img(level)
 
     def update(self):
@@ -186,7 +190,7 @@ class Boss:
 
         if self.img:
             screen.blit(self.img, (self.x, self.y + bob))
-            iw, ih = 160, 130
+            iw, ih = self.img.get_size()
             aura   = pygame.Surface((iw, ih), pygame.SRCALPHA)
             glow_col = (255, 50, 50)  if self.hp < self.max_hp // 3 else \
                        (255, 140, 0)  if self.hp < self.max_hp * 0.6 else \

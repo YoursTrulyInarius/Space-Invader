@@ -13,6 +13,7 @@ from constants import (
 )
 from managers.asset_manager import get_alien_surf
 from managers.ui_manager import InputBox, _draw_slider_bar
+from managers.achievement_manager import ACHIEVEMENTS
 
 
 def _make_star_icon(color):
@@ -706,6 +707,413 @@ class ProfileScreen:
                         self._set_focus(1)
                 self.input.handle_event(ev)
                 self.password_input.handle_event(ev)
+
+            pygame.display.flip()
+            self.clock.tick(60)
+
+
+class DashboardScreen:
+    """Post-login hub for gameplay, account details, stats, and titles."""
+
+    _ACTIONS = ("PLAY", "PROFILE", "STATS", "TITLES", "LEADERBOARD", "SETTINGS", "LOG OUT")
+    _PAGES = ("home", "profile", "stats", "titles")
+
+    def __init__(self, screen, db, audio, username):
+        self.screen = screen
+        self.db = db
+        self.audio = audio
+        self.username = username
+        self.page = "home"
+        self.selection = 0
+        self.message = ""
+        self.titles_scroll = 0
+        self.clock = pygame.time.Clock()
+        self.tick = 0
+        self.stars = [[random.randint(0, constants.SCREEN_WIDTH),
+                       random.randint(0, constants.SCREEN_HEIGHT),
+                       random.uniform(0.3, 1.4),
+                       random.randint(1, 2)] for _ in range(90)]
+        self.name_input = InputBox(0, 0, 300, 42, "New callsign...")
+        self.name_input.text = username
+        self.profile = None
+        self.stats = None
+        self.history = []
+        self.rank = None
+        self.unlocked_achievements = {}
+        self.achievement_progress = {}
+        self.titles_scroll = 0
+        self._refresh_data()
+
+    def _refresh_data(self):
+        if not self.db or not self.db.connected:
+            self.profile = None
+            self.stats = None
+            self.history = []
+            self.rank = None
+            self.unlocked_achievements = {}
+            self.achievement_progress = {}
+            return
+        self.profile = self.db.get_player(self.username)
+        self.stats = self.db.get_player_stats(self.username)
+        self.history = self.db.get_game_history(self.username, limit=5)
+        self.rank = self.db.get_player_rank(self.username)
+        player_id = (self.profile or {}).get("id")
+        if player_id:
+            unlocked = self.db.get_player_achievements(player_id)
+            self.unlocked_achievements = {
+                item["achievement_key"]: item.get("unlocked_at") for item in unlocked
+            }
+            self.achievement_progress = self.db.get_achievement_progress(player_id)
+        else:
+            self.unlocked_achievements = {}
+            self.achievement_progress = {}
+
+    def _action_rects(self):
+        sidebar_x = 24
+        sidebar_y = 144
+        sidebar_w = min(210, max(160, constants.SCREEN_WIDTH // 4))
+        button_h = 42
+        gap = 10
+        return [pygame.Rect(sidebar_x, sidebar_y + i * (button_h + gap), sidebar_w, button_h)
+                for i in range(len(self._ACTIONS))]
+
+    def _content_rect(self):
+        left = self._action_rects()[0].right + 22
+        return pygame.Rect(left, 144, max(200, constants.SCREEN_WIDTH - left - 24),
+                          max(220, constants.SCREEN_HEIGHT - 174))
+
+    def _titles_visible_count(self):
+        content = self._content_rect()
+        list_top = content.y + 76
+        return max(1, (content.bottom - 22 - list_top + 8) // 108)
+
+    def _scroll_titles(self, direction, by_page=False):
+        visible_count = self._titles_visible_count()
+        max_scroll = max(0, len(ACHIEVEMENTS) - visible_count)
+        step = max(1, visible_count - 1) if by_page else 1
+        self.titles_scroll = max(
+            0, min(max_scroll, self.titles_scroll + direction * step)
+        )
+
+    def _draw_background(self):
+        self.screen.fill(NAVY)
+        for star in self.stars:
+            star[1] += star[2]
+            if star[1] >= constants.SCREEN_HEIGHT:
+                star[1] = 0
+                star[0] = random.randint(0, constants.SCREEN_WIDTH)
+            brightness = random.randint(140, 240)
+            pygame.draw.circle(self.screen, (brightness, brightness, brightness),
+                               (int(star[0]), int(star[1])), star[3])
+
+    def _draw_button(self, rect, label, active=False):
+        hovered = rect.collidepoint(pygame.mouse.get_pos())
+        color = CYAN if active or hovered else (55, 60, 120)
+        pygame.draw.rect(self.screen, (30, 54, 98) if active or hovered else (14, 18, 36),
+                         rect, border_radius=8)
+        pygame.draw.rect(self.screen, color, rect, 2, border_radius=8)
+        font = pygame.font.SysFont("consolas", 17, bold=True)
+        text = font.render(label, True, WHITE if active or hovered else LIGHT_GRAY)
+        self.screen.blit(text, (rect.centerx - text.get_width() // 2,
+                                rect.centery - text.get_height() // 2))
+
+    def _draw_metric(self, rect, label, value, color=CYAN):
+        pygame.draw.rect(self.screen, (15, 23, 48), rect, border_radius=8)
+        pygame.draw.rect(self.screen, (55, 75, 130), rect, 1, border_radius=8)
+        label_font = pygame.font.SysFont("consolas", 14, bold=True)
+        value_font = pygame.font.SysFont("consolas", 22, bold=True)
+        label_surface = label_font.render(label, True, LIGHT_GRAY)
+        value_surface = value_font.render(str(value), True, color)
+        self.screen.blit(label_surface, (rect.x + 12, rect.y + 12))
+        self.screen.blit(value_surface, (rect.x + 12, rect.y + 34))
+
+    def _draw_wrapped_text(self, text, font, color, x, y, max_width, line_height):
+        words = text.split()
+        lines = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            if current and font.size(candidate)[0] > max_width:
+                lines.append(current)
+                current = word
+            else:
+                current = candidate
+        if current:
+            lines.append(current)
+
+        for line in lines:
+            self.screen.blit(font.render(line, True, color), (x, y))
+            y += line_height
+        return y
+
+    def _draw_content(self, box):
+        pygame.draw.rect(self.screen, (10, 14, 32), box, border_radius=14)
+        pygame.draw.rect(self.screen, (48, 76, 145), box, 2, border_radius=14)
+        title_font = pygame.font.SysFont("consolas", 28, bold=True)
+        body_font = pygame.font.SysFont("consolas", 18)
+        content = box.inflate(-28, -28)
+        old_clip = self.screen.get_clip()
+        self.screen.set_clip(content)
+
+        if self.page == "home":
+            heading = f"WELCOME, {self.username.upper()}"
+            self._draw_wrapped_text(heading, title_font, YELLOW, box.x + 24, box.y + 24,
+                                    box.width - 48, 34)
+            self.screen.blit(body_font.render("Your pilot dashboard", True, LIGHT_GRAY),
+                             (box.x + 26, box.y + 64))
+            if self.stats:
+                gap = 12
+                metric_w = (box.width - 48 - gap * 2) // 3
+                metric_y = box.y + 112
+                metrics = (
+                    ("HIGH SCORE", self.stats.get("highest_score", 0)),
+                    ("GAMES", self.stats.get("total_games_played", 0)),
+                    ("ENEMIES", self.stats.get("total_enemies_killed", 0)),
+                )
+                for i, (label, value) in enumerate(metrics):
+                    self._draw_metric(
+                        pygame.Rect(box.x + 24 + i * (metric_w + gap), metric_y,
+                                    metric_w, 78), label, value)
+            hint = body_font.render("Choose PLAY to launch your next run.", True, CYAN)
+            self.screen.blit(hint, (box.x + 26, box.y + 220))
+        elif self.page == "profile":
+            self.screen.blit(title_font.render("PILOT PROFILE", True, YELLOW),
+                             (box.x + 24, box.y + 24))
+            details = [
+                f"Callsign: {self.username}",
+                f"Joined: {(self.profile or {}).get('created_at', 'Unavailable')}",
+                f"Global rank: #{self.rank}" if self.rank else "Global rank: Unranked",
+            ]
+            for i, detail in enumerate(details):
+                self.screen.blit(body_font.render(detail, True, LIGHT_GRAY),
+                                 (box.x + 26, box.y + 78 + i * 32))
+            self.name_input.rect = pygame.Rect(box.x + 24, box.y + 194,
+                                               min(340, box.width - 48), 42)
+            self.name_input.draw(self.screen)
+            save_rect = pygame.Rect(box.x + 24, box.y + 250, 150, 40)
+            self._draw_button(save_rect, "SAVE CALLSIGN")
+            if self.message:
+                self.screen.blit(body_font.render(self.message, True, CYAN),
+                                 (box.x + 24, save_rect.bottom + 14))
+        elif self.page == "stats":
+            self._draw_wrapped_text("PILOT STATISTICS", title_font, YELLOW,
+                                    box.x + 24, box.y + 24, box.width - 48, 34)
+            if not self.stats:
+                self.screen.blit(body_font.render("Statistics are unavailable.", True, LIGHT_GRAY),
+                                 (box.x + 26, box.y + 84))
+            else:
+                rows = [
+                    ("Total score", self.stats.get("total_score", 0)),
+                    ("Highest score", self.stats.get("highest_score", 0)),
+                    ("Games played", self.stats.get("total_games_played", 0)),
+                    ("Enemies defeated", self.stats.get("total_enemies_killed", 0)),
+                    ("Power-ups collected", self.stats.get("total_powerups_collected", 0)),
+                ]
+                for i, (label, value) in enumerate(rows):
+                    self.screen.blit(body_font.render(f"{label}: {value}", True, LIGHT_GRAY),
+                                     (box.x + 26, box.y + 76 + i * 30))
+                history_y = box.y + 250
+                self.screen.blit(body_font.render("RECENT RUNS", True, CYAN),
+                                 (box.x + 26, history_y))
+                for i, run in enumerate(self.history[:4]):
+                    played = format_display_date(run.get('game_date')) or "Date unavailable"
+                    line = f"{played}   SCORE {run.get('score', 0)}"
+                    self.screen.blit(
+                        pygame.font.SysFont("consolas", 14).render(line, True, LIGHT_GRAY),
+                        (box.x + 26, history_y + 28 + i * 22))
+        elif self.page == "titles":
+            self._draw_wrapped_text("TITLES & ACHIEVEMENTS", title_font, YELLOW,
+                                    box.x + 24, box.y + 24, box.width - 48, 34)
+            list_top = box.y + 76
+            card_h = 100
+            gap = 8
+            visible_count = self._titles_visible_count()
+            max_scroll = max(0, len(ACHIEVEMENTS) - visible_count)
+            self.titles_scroll = min(self.titles_scroll, max_scroll)
+            title_font_sm = pygame.font.SysFont("consolas", 16, bold=True)
+            detail_font = pygame.font.SysFont("consolas", 12)
+            for index, achievement in enumerate(
+                    ACHIEVEMENTS[self.titles_scroll:self.titles_scroll + visible_count],
+                    start=self.titles_scroll):
+                row_y = list_top + (index - self.titles_scroll) * (card_h + gap)
+                card = pygame.Rect(box.x + 20, row_y, box.width - 40, card_h)
+                unlocked_at = self.unlocked_achievements.get(achievement["key"])
+                border = CYAN if unlocked_at else (55, 75, 130)
+                pygame.draw.rect(self.screen, (15, 23, 48), card, border_radius=8)
+                pygame.draw.rect(self.screen, border, card, 1, border_radius=8)
+
+                title = title_font_sm.render(achievement["title"], True,
+                                             YELLOW if unlocked_at else LIGHT_GRAY)
+                self.screen.blit(title, (card.x + 12, card.y + 8))
+                state = "UNLOCKED" if unlocked_at else "LOCKED"
+                state_surface = detail_font.render(state, True, CYAN if unlocked_at else GRAY)
+                self.screen.blit(state_surface, (card.right - 12 - state_surface.get_width(),
+                                                 card.y + 10))
+
+                description_bottom = self._draw_wrapped_text(
+                    achievement["description"], detail_font, LIGHT_GRAY,
+                    card.x + 12, card.y + 32, card.width - 24, 14,
+                )
+                progress = self._achievement_progress_value(achievement)
+                target = achievement["target"]
+                current = min(progress, target)
+                if unlocked_at:
+                    progress_text = f"Unlocked {format_display_date(unlocked_at)}"
+                    ratio = 1.0
+                else:
+                    progress_text = f"Progress: {current}/{target}"
+                    ratio = current / target if target else 0
+                progress_surface = detail_font.render(progress_text, True, CYAN)
+                self.screen.blit(progress_surface,
+                                 (card.x + 12, max(card.y + 60, description_bottom + 2)))
+                bar = pygame.Rect(card.x + 12, card.y + 82, card.width - 24, 6)
+                pygame.draw.rect(self.screen, (35, 42, 65), bar, border_radius=3)
+                if ratio > 0:
+                    fill = pygame.Rect(bar.x, bar.y, max(2, int(bar.width * ratio)), bar.height)
+                    pygame.draw.rect(self.screen, CYAN if unlocked_at else PURPLE,
+                                     fill, border_radius=3)
+
+            if max_scroll:
+                hint = detail_font.render(
+                    "Up/Down: scroll  PgUp/PgDn: page  Home/End: jump", True, GRAY
+                )
+                self.screen.blit(hint, (box.right - 18 - hint.get_width(), box.bottom - 19))
+
+        self.screen.set_clip(old_clip)
+
+    def _achievement_progress_value(self, achievement):
+        metric = achievement["metric"]
+        if metric == "boss_types":
+            return sum(
+                self.achievement_progress.get(f"boss_type_{number}", 0) > 0
+                for number in range(1, 5)
+            )
+        return self.achievement_progress.get(metric, 0)
+
+    def _save_callsign(self):
+        new_name = self.name_input.text.strip()
+        if not new_name:
+            self.message = "Callsign cannot be empty."
+            return
+        if len(new_name) > 30:
+            self.message = "Callsign must be 30 characters or fewer."
+            return
+        player_id = (self.profile or {}).get("id")
+        if not player_id:
+            self.message = "Could not load your profile."
+            return
+        if self.db.update_player_profile(player_id, new_name):
+            self.username = new_name
+            self.name_input.text = new_name
+            self.message = "Callsign updated."
+            self._refresh_data()
+        else:
+            self.message = "Could not update callsign. It may already be in use."
+
+    def _activate(self, index):
+        action = self._ACTIONS[index]
+        self.selection = index
+        self.message = ""
+        if action == "PLAY":
+            return "play"
+        if action == "LOG OUT":
+            return "logout"
+        if action == "LEADERBOARD":
+            LeaderboardScreen(self.screen, self.db).run()
+            self.screen = pygame.display.get_surface()
+            constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT = self.screen.get_size()
+            return None
+        if action == "SETTINGS":
+            AudioSettingsScreen(self.screen, self.audio).run()
+            self.screen = pygame.display.get_surface()
+            constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT = self.screen.get_size()
+            return None
+        self.page = action.lower()
+        if self.page == "stats":
+            self._refresh_data()
+        return None
+
+    def run(self):
+        while True:
+            self.tick += 1
+            self._draw_background()
+            draw_text_center(self.screen, "PILOT DASHBOARD",
+                             pygame.font.SysFont("consolas", 36, bold=True), YELLOW, 34)
+            subtitle = pygame.font.SysFont("consolas", 16).render(
+                f"SIGNED IN AS {self.username}", True, (100, 155, 255))
+            self.screen.blit(subtitle, (constants.SCREEN_WIDTH // 2 - subtitle.get_width() // 2, 82))
+
+            rects = self._action_rects()
+            for i, (rect, label) in enumerate(zip(rects, self._ACTIONS)):
+                self._draw_button(rect, label, self.selection == i)
+            self._draw_content(self._content_rect())
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.VIDEORESIZE:
+                    width, height = event.dict.get(
+                        "size", (constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT))
+                    constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT = width, height
+                    self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+                    continue
+                if event.type == pygame.MOUSEWHEEL and self.page == "titles":
+                    visible_count = self._titles_visible_count()
+                    self.titles_scroll = max(
+                        0,
+                        min(len(ACHIEVEMENTS) - visible_count,
+                            self.titles_scroll - event.y),
+                    )
+                    continue
+                if event.type == pygame.KEYDOWN:
+                    if self.page == "titles":
+                        if event.key == pygame.K_DOWN:
+                            self._scroll_titles(1)
+                            continue
+                        if event.key == pygame.K_UP:
+                            self._scroll_titles(-1)
+                            continue
+                        if event.key == pygame.K_PAGEDOWN:
+                            self._scroll_titles(1, by_page=True)
+                            continue
+                        if event.key == pygame.K_PAGEUP:
+                            self._scroll_titles(-1, by_page=True)
+                            continue
+                        if event.key == pygame.K_HOME:
+                            self.titles_scroll = 0
+                            continue
+                        if event.key == pygame.K_END:
+                            self.titles_scroll = max(
+                                0, len(ACHIEVEMENTS) - self._titles_visible_count()
+                            )
+                            continue
+                    if event.key == pygame.K_ESCAPE:
+                        return "logout"
+                    if event.key in (pygame.K_UP, pygame.K_DOWN):
+                        direction = -1 if event.key == pygame.K_UP else 1
+                        self.selection = (self.selection + direction) % len(self._ACTIONS)
+                        continue
+                    if event.key == pygame.K_RETURN:
+                        if self.page == "profile" and self.name_input.focused:
+                            self._save_callsign()
+                            continue
+                        result = self._activate(self.selection)
+                        if result:
+                            return result
+                if self.page == "profile":
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        save_rect = pygame.Rect(self._content_rect().x + 24,
+                                                self._content_rect().y + 250, 150, 40)
+                        if save_rect.collidepoint(event.pos):
+                            self._save_callsign()
+                            continue
+                    self.name_input.handle_event(event)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for i, rect in enumerate(self._action_rects()):
+                        if rect.collidepoint(event.pos):
+                            result = self._activate(i)
+                            if result:
+                                return result
 
             pygame.display.flip()
             self.clock.tick(60)

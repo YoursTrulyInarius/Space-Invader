@@ -82,6 +82,8 @@ class Database:
             self._create_players_table()
             self._ensure_password_column()
             self._create_scores_table()
+            self._ensure_powerup_columns()
+            self._create_achievement_tables()
             self._create_leaderboard_view()
             self._create_indexes()
             self.connection.commit()
@@ -156,11 +158,49 @@ class Database:
                 shield_powerups INT DEFAULT 0,
                 multishot_powerups INT DEFAULT 0,
                 heart_powerups INT DEFAULT 0,
+                side_drone_powerups INT DEFAULT 0,
+                score_multiplier_powerups INT DEFAULT 0,
                 shots_fired INT DEFAULT 0,
                 shots_hit INT DEFAULT 0,
                 accuracy DECIMAL(5,2) DEFAULT 0,
                 game_duration INT DEFAULT 0,
                 game_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
+    def _ensure_powerup_columns(self):
+        """Add counters for newer power-ups to existing score tables."""
+        for column in ("side_drone_powerups", "score_multiplier_powerups"):
+            self.cursor.execute("""
+                SELECT COUNT(*) AS column_count
+                FROM information_schema.columns
+                WHERE table_schema = %s
+                  AND table_name = 'scores'
+                  AND column_name = %s
+            """, (self.database, column))
+            result = self.cursor.fetchone()
+            if not result or not result.get("column_count", 0):
+                self.cursor.execute(
+                    f"ALTER TABLE scores ADD COLUMN `{column}` INT DEFAULT 0"
+                )
+
+    def _create_achievement_tables(self):
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS player_achievements (
+                player_id INT NOT NULL,
+                achievement_key VARCHAR(64) NOT NULL,
+                unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (player_id, achievement_key),
+                FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS player_achievement_progress (
+                player_id INT NOT NULL,
+                metric_key VARCHAR(64) NOT NULL,
+                progress INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (player_id, metric_key),
                 FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
@@ -352,6 +392,8 @@ class Database:
                 stats.get('shield_powerups', 0)
                 + stats.get('multishot_powerups', 0)
                 + stats.get('heart_powerups', 0)
+                + stats.get('side_drone_powerups', 0)
+                + stats.get('score_multiplier_powerups', 0)
             )
 
             self.cursor.execute("""
@@ -362,6 +404,8 @@ class Database:
                     shield_powerups = %s,
                     multishot_powerups = %s,
                     heart_powerups = %s,
+                    side_drone_powerups = %s,
+                    score_multiplier_powerups = %s,
                     shots_fired = %s,
                     shots_hit = %s,
                     accuracy = %s,
@@ -374,6 +418,8 @@ class Database:
                 stats.get('shield_powerups', 0),
                 stats.get('multishot_powerups', 0),
                 stats.get('heart_powerups', 0),
+                stats.get('side_drone_powerups', 0),
+                stats.get('score_multiplier_powerups', 0),
                 stats.get('shots_fired', 0),
                 stats.get('shots_hit', 0),
                 accuracy,
@@ -404,6 +450,101 @@ class Database:
         except mysql.connector.Error as err:
             print(f"[ERR] Error updating game session: {err}")
             return False
+
+    def increment_achievement_progress(self, player_id, metric_key, amount=1):
+        """Add to a player's lifetime achievement metric and return its value."""
+        if not self._ensure_connection() or amount <= 0:
+            return None
+
+        try:
+            self.cursor.execute("""
+                INSERT INTO player_achievement_progress (player_id, metric_key, progress)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE progress = progress + VALUES(progress)
+            """, (player_id, metric_key, amount))
+            self.connection.commit()
+            self.cursor.execute("""
+                SELECT progress
+                FROM player_achievement_progress
+                WHERE player_id = %s AND metric_key = %s
+            """, (player_id, metric_key))
+            result = self.cursor.fetchone()
+            return result["progress"] if result else None
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error updating achievement progress: {err}")
+            return None
+
+    def set_achievement_progress(self, player_id, metric_key, progress):
+        """Set a progress metric to its maximum observed value."""
+        if not self._ensure_connection() or progress < 0:
+            return None
+
+        try:
+            self.cursor.execute("""
+                INSERT INTO player_achievement_progress (player_id, metric_key, progress)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE progress = GREATEST(progress, VALUES(progress))
+            """, (player_id, metric_key, progress))
+            self.connection.commit()
+            self.cursor.execute("""
+                SELECT progress
+                FROM player_achievement_progress
+                WHERE player_id = %s AND metric_key = %s
+            """, (player_id, metric_key))
+            result = self.cursor.fetchone()
+            return result["progress"] if result else None
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error setting achievement progress: {err}")
+            return None
+
+    def get_achievement_progress(self, player_id):
+        """Return a mapping of a player's lifetime achievement metrics."""
+        if not self._ensure_connection():
+            return {}
+
+        try:
+            self.cursor.execute("""
+                SELECT metric_key, progress
+                FROM player_achievement_progress
+                WHERE player_id = %s
+            """, (player_id,))
+            return {row["metric_key"]: row["progress"] for row in self.cursor.fetchall()}
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error fetching achievement progress: {err}")
+            return {}
+
+    def unlock_achievement(self, player_id, achievement_key):
+        """Persist an achievement and report whether this call unlocked it."""
+        if not self._ensure_connection():
+            return False
+
+        try:
+            self.cursor.execute("""
+                INSERT IGNORE INTO player_achievements (player_id, achievement_key)
+                VALUES (%s, %s)
+            """, (player_id, achievement_key))
+            self.connection.commit()
+            return self.cursor.rowcount > 0
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error unlocking achievement: {err}")
+            return False
+
+    def get_player_achievements(self, player_id):
+        """Return a player's unlocked achievements and unlock timestamps."""
+        if not self._ensure_connection():
+            return []
+
+        try:
+            self.cursor.execute("""
+                SELECT achievement_key, unlocked_at
+                FROM player_achievements
+                WHERE player_id = %s
+                ORDER BY unlocked_at
+            """, (player_id,))
+            return self.cursor.fetchall()
+        except mysql.connector.Error as err:
+            print(f"[ERR] Error fetching achievements: {err}")
+            return []
 
     def get_leaderboard(self):
         """Get the top 10 scores."""
@@ -468,7 +609,7 @@ class Database:
                     powerups_collected,
                     ROUND(accuracy, 2) as accuracy,
                     game_duration,
-                    DATE_FORMAT(game_date, '%%Y-%%m-%%d %%H:%%i') as game_date
+                    game_date
                 FROM scores gs
                 JOIN players p ON gs.player_id = p.id
                 WHERE p.username = %s

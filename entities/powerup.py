@@ -3,12 +3,18 @@ Power-up object state and rendering.
 """
 import pygame
 import constants
-from constants import CYAN, RED, PURPLE, WHITE, clamp_color
+from constants import CYAN, RED, PURPLE, WHITE, YELLOW, ORANGE, clamp_color
 from managers.asset_manager import get_powerup_icon
 
 
 class PowerUp:
-    _COLORS = {'shield': CYAN, 'multishot': PURPLE, 'heart': RED}
+    _COLORS = {
+        'shield': CYAN,
+        'multishot': PURPLE,
+        'heart': RED,
+        'side_drones': ORANGE,
+        'score_multiplier': YELLOW,
+    }
 
     def __init__(self, x, y, kind):
         self.x     = x

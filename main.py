@@ -6,7 +6,7 @@ from database import Database
 import constants
 from managers.asset_manager import load_game_images
 from managers.audio_manager import AudioManager
-from managers.screen_manager import ProfileScreen
+from managers.screen_manager import DashboardScreen, ProfileScreen
 from managers.game_manager import GameManager as Game
 
 # Pre-initialise audio before pygame.init()
@@ -33,20 +33,29 @@ def main():
     # Load game textures/sprites AFTER display init
     load_game_images()
 
-    # Main user flow loop
-    while True:
-        # Run user profile selection screen
+    # Keep the authenticated player in the dashboard until they log out.
+    should_quit = False
+    while not should_quit:
         username = ProfileScreen(pygame.display.get_surface(), db, audio).run()
         if not username:
             break
-            
-        print(f"\nStarting game session for: {username}")
-        # Run main game loop
-        result = Game(username, db, audio).run()
-        
-        # If user did not request return to dashboard/profile selection, exit
-        if result != 'dashboard':
-            break
+
+        while username:
+            dashboard = DashboardScreen(pygame.display.get_surface(), db, audio, username)
+            action = dashboard.run()
+            username = dashboard.username
+
+            if action == 'logout':
+                break
+            if action != 'play':
+                should_quit = True
+                break
+
+            print(f"\nStarting game session for: {username}")
+            result = Game(username, db, audio).run()
+            if result != 'dashboard':
+                should_quit = True
+                break
 
     # Clean up resources
     if db and db.connection:

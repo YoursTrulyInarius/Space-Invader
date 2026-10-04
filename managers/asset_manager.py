@@ -23,6 +23,7 @@ _ASSET_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 
 _IMG_PLAYER_SHIP   = None
 _IMG_BOSS_CAPYBARA = None
 _IMG_BOSS_ANIMAL   = None
+_IMG_BOSSES        = [None, None, None, None]
 _IMG_ENEMY_SHIP    = None   # regular enemy sprite
 _IMG_ENEMY_BULLET  = None   # enemy projectile sprite
 _IMG_PLAYER_BULLET = None   # player projectile sprite (mblutter)
@@ -112,11 +113,15 @@ def load_game_images():
     """Populate the ship / boss image globals.
     Must be called AFTER pygame.display.set_mode()."""
     global _IMG_PLAYER_SHIP, _IMG_BOSS_CAPYBARA, _IMG_BOSS_ANIMAL
-    global _IMG_ENEMY_SHIP, _IMG_ENEMY_BULLET, _IMG_PLAYER_BULLET
+    global _IMG_BOSSES, _IMG_ENEMY_SHIP, _IMG_ENEMY_BULLET, _IMG_PLAYER_BULLET
     # Boss / player ship – these have known colourkeys, no crop needed
     _IMG_PLAYER_SHIP   = _load_img('player_ship.png',   (PLAYER_W + 20, PLAYER_H + 20), colorkey=(0, 0, 0))
     _IMG_BOSS_CAPYBARA = _load_img('capybara_boss.png', (160, 130),                      colorkey=(255, 0, 255))
     _IMG_BOSS_ANIMAL   = _load_img('animal_boss.png',   (160, 130),                      colorkey=(255, 0, 255))
+    _IMG_BOSSES        = [
+        _load_img(f'boss{boss_number}.png', (160, 130), colorkey=(255, 0, 255))
+        for boss_number in range(1, 5)
+    ]
     # New sprites – white canvas, auto-crop then remove white fringe
     _IMG_ENEMY_SHIP    = _load_img('enemy ship.png',    (48, 38),          colorkey=(255, 255, 255), crop_bg=(255, 255, 255))
     _IMG_ENEMY_BULLET  = _load_img('enemy bullet.png',  (10,           24),               colorkey=(255, 255, 255), crop_bg=(255, 255, 255))
@@ -124,6 +129,9 @@ def load_game_images():
     if _IMG_PLAYER_SHIP:   print("[OK] player_ship.png loaded")
     if _IMG_BOSS_CAPYBARA: print("[OK] capybara_boss.png loaded")
     if _IMG_BOSS_ANIMAL:   print("[OK] animal_boss.png loaded")
+    for boss_number, img in enumerate(_IMG_BOSSES, start=1):
+        if img:
+            print(f"[OK] boss{boss_number}.png loaded")
     if _IMG_ENEMY_SHIP:    print("[OK] enemy ship.png loaded")
     if _IMG_ENEMY_BULLET:  print("[OK] enemy bullet.png loaded")
     if _IMG_PLAYER_BULLET: print("[OK] mblutter.png loaded")
@@ -147,7 +155,10 @@ def get_player_bullet_img():
 
 
 def get_boss_img(level):
-    """Return the correct boss image based on level parity."""
+    """Return the boss image assigned to this level, cycling through four bosses."""
+    boss_img = _IMG_BOSSES[(level - 1) % len(_IMG_BOSSES)]
+    if boss_img is not None:
+        return boss_img
     return _IMG_BOSS_CAPYBARA if (level % 2 == 1) else _IMG_BOSS_ANIMAL
 
 
@@ -239,10 +250,30 @@ _ICON_HEART = _make_icon([
     "        "
 ], WHITE)
 
+_ICON_DRONES = _make_icon([
+    " XX   XX ",
+    "XXXX XXXX",
+    " XX   XX ",
+    "  X   X  ",
+    "  X   X  ",
+], WHITE)
+
+_ICON_MULTIPLIER = _make_icon([
+    "XX   XX",
+    " X   X ",
+    "  X X  ",
+    "   X   ",
+    "  X X  ",
+    " X   X ",
+    "XX   XX",
+], WHITE)
+
 POWERUP_ICONS = {
-    'shield':    _ICON_SHIELD,
-    'multishot': _ICON_MULTI,
-    'heart':     _ICON_HEART,
+    'shield':           _ICON_SHIELD,
+    'multishot':        _ICON_MULTI,
+    'heart':            _ICON_HEART,
+    'side_drones':      _ICON_DRONES,
+    'score_multiplier': _ICON_MULTIPLIER,
 }
 
 

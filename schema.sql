@@ -5,6 +5,8 @@ USE space_invaders_db;
 -- Drop tables if they exist (in correct order to avoid foreign key issues)
 DROP VIEW IF EXISTS leaderboard;
 DROP TABLE IF EXISTS scores;
+DROP TABLE IF EXISTS player_achievement_progress;
+DROP TABLE IF EXISTS player_achievements;
 DROP TABLE IF EXISTS players;
 
 -- Create players table
@@ -30,11 +32,30 @@ CREATE TABLE scores (
     shield_powerups INT DEFAULT 0,
     multishot_powerups INT DEFAULT 0,
     heart_powerups INT DEFAULT 0,
+    side_drone_powerups INT DEFAULT 0,
+    score_multiplier_powerups INT DEFAULT 0,
     shots_fired INT DEFAULT 0,
     shots_hit INT DEFAULT 0,
     accuracy DECIMAL(5,2) DEFAULT 0,
     game_duration INT DEFAULT 0,
     game_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Persistent achievement unlocks and lifetime progress
+CREATE TABLE player_achievements (
+    player_id INT NOT NULL,
+    achievement_key VARCHAR(64) NOT NULL,
+    unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (player_id, achievement_key),
+    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE player_achievement_progress (
+    player_id INT NOT NULL,
+    metric_key VARCHAR(64) NOT NULL,
+    progress INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (player_id, metric_key),
     FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

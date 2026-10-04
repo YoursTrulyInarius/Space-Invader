@@ -17,14 +17,26 @@ Space Invaders: Classic Arcade Edition is a desktop game that combines classic a
 - Redesigned the login and registration screen with a responsive foreground panel and compact-window layout.
 - Added complete keyboard focus navigation across callsign, password, login/register, and account-mode controls.
 - Added Enter-key activation for the currently focused authentication action.
+- Added four rotating boss sprites and periodic power-up drops during boss fights.
+- Added a post-login pilot dashboard for gameplay, profile editing, statistics, match history, titles, leaderboard, and settings.
+- Added 19 persistent achievements with lifetime and per-run progress on a keyboard-scrollable Titles page.
+- Added Side Drones and a temporary 2x Score Multiplier power-up; drone drops use a lower random weight.
+- Added persistent counters and safe startup migration for the new power-up session statistics.
 
 ## Features
-- Wave-based gameplay with boss encounters
+- Wave-based gameplay with four rotating boss encounters
+- Boss health is shown with a generic **BOSS** label; boss sprite names are not displayed
+- Boss fights periodically spawn random power-ups during combat
 - Responsive window resizing and adaptive UI
-- Power-ups including shield, multishot, and extra life
+- Power-ups: shield, multishot, extra life, Side Drones, and a temporary 2x Score Multiplier
+- Side Drones add two bullets to each player shot for 15 seconds and are less common than other power-ups
+- Power-up effects and their remaining duration are shown in the gameplay HUD
 - Procedural sound effects and background music
 - Persistent player profiles and match history
 - Login and registration with salted password hashes
+- Post-login dashboard with profile editing, match history, statistics, and a titles page
+- 19 persistent achievements covering lifetime milestones and per-run challenges
+- Titles page shows locked/unlocked status and progress; browse with Up/Down, Page Up/Page Down, Home/End, or the mouse wheel
 - Password visibility eye toggle on the login form
 - Global leaderboard and audio settings screens
 - Offline-safe gameplay when the database is unavailable
@@ -56,11 +68,12 @@ Space Invaders: Classic Arcade Edition is a desktop game that combines classic a
   - `audio_manager.py`: procedural sound and music generation
   - `screen_manager.py`: profile, leaderboard, and settings screens
   - `ui_manager.py`: pause menu and UI widgets
+  - `achievement_manager.py`: achievement definitions, progress tracking, and unlock persistence
 - `assets/`: game assets
   - `images/`: game textures, sprites, and background assets
   - `sounds/`: placeholder for sound resources
 - `schema.sql`: SQL schema reference
-- `tests/`: regression tests for the database layer
+- `tests/`: regression tests for database, dashboard, bosses, achievements, and power-ups
 
 ## Requirements
 
@@ -69,7 +82,7 @@ Space Invaders: Classic Arcade Edition is a desktop game that combines classic a
 - MySQL Server 8.x or compatible MySQL installation
 - Git
 
-The game can open without MySQL, but profiles, scores, and leaderboards require a running MySQL server.
+The game can open without MySQL, but login, profiles, saved scores, achievement persistence, and leaderboards require a running MySQL server.
 
 ## Clone the Project
 
@@ -114,7 +127,7 @@ The `.venv/` directory is ignored by Git and should not be committed.
    }
    ```
 
-3. Run the setup script from the project root. It creates `space_invaders_db`, `players`, `scores`, indexes, and `leaderboard` automatically when the configured MySQL user has database-creation permission:
+3. Run the setup script from the project root. It creates `space_invaders_db`, the player, score, and achievement tables, indexes, and `leaderboard` automatically when the configured MySQL user has database-creation permission:
 
   ```powershell
   python database_setup.py
@@ -163,24 +176,26 @@ On first launch, the database and tables are created automatically when MySQL is
 ## Database Schema
 The project uses the following persistent structures:
 - `players`: stores usernames, password hashes, and cumulative player stats
-- `scores`: stores per-session score, accuracy, duration, and power-up usage
+- `scores`: stores per-session score, accuracy, duration, and counts for each power-up type
+- `player_achievements`: stores each player's unlocked achievements
+- `player_achievement_progress`: stores lifetime and per-run achievement metrics
 - `leaderboard`: a view that returns the top scores for display
 
-When upgrading an existing database, `database_setup.py` adds the `password_hash` column to `players` automatically if it is missing. Existing players created before login support must register a password before they can log in.
+When upgrading an existing database, application startup adds missing password and power-up statistic columns. Existing player accounts created before login support must register a password before they can log in. Achievement tables are created automatically. `schema.sql` is a clean rebuild script that drops existing game tables and should only be used after backing up data.
 
 ## Login and Registration
 
-The profile screen opens in **Login** mode. Enter a callsign and password, then press `Enter` or select **LOGIN**. Select **CREATE ACCOUNT** to register a new player; passwords must contain at least six characters. Select the eye icon inside the password field to show or hide the password while typing.
+The profile screen opens in **Login** mode. Enter a callsign and password, then press `Enter` or select **LOGIN**. Select **CREATE ACCOUNT** to register a new player; passwords must contain at least six characters. Select the eye icon inside the password field to show or hide the password while typing. Successful login opens the pilot dashboard rather than starting gameplay immediately. Choose **PLAY** to begin a run; use **PROFILE** to update your callsign, **STATS** to view lifetime totals and recent runs, or **TITLES** to browse all 19 achievements and their progress. The dashboard also provides the leaderboard, settings, and log-out actions.
 
 ## Testing
 
-Run the database regression tests with the virtual-environment interpreter:
+Run all automated regression tests with the virtual-environment interpreter:
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-The tests use lightweight fakes for schema initialization and do not require a live MySQL server.
+The tests use lightweight fakes for database behavior and do not require a live MySQL server. They cover the dashboard and achievements, boss sprite selection and fallback drawing, boss-fight power-up drops, power-up effects and statistics, and database schema/session behavior.
 
 ## Version History
 ### Version 2.0
