@@ -1,5 +1,5 @@
 # Space Invaders: Classic Arcade Edition
-adadsaadadasa
+adadsaadadas
 A retro-style arcade shooter built in Python with Pygame, procedural audio, and a MySQL-backed leaderboard system.
 
 ## Overview
