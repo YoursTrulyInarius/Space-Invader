@@ -10,6 +10,7 @@ from datetime import datetime
 import config
 from database import Database
 import constants
+from settings import Settings
 from entities.player import Player
 from entities.enemy import Enemy, Boss
 from entities.powerup import PowerUp
@@ -21,12 +22,14 @@ from managers.achievement_manager import AchievementManager
 
 class GameManager:
     def __init__(self, username="Player", db=None, audio=None):
+        self.settings = Settings()
         self.screen   = pygame.display.get_surface()
         pygame.display.set_caption(f"Space Invaders  |  {username}")
         self.clock    = pygame.time.Clock()
         self.username = username
         self.db       = db if db else Database()
         self.audio    = audio
+        self.mobile_controls = bool(self.settings.get('mobile_controls', True))
 
         self.player        = Player()
         self.enemies       = []
@@ -60,6 +63,7 @@ class GameManager:
         self.score_multiplier_timer = 0
         self.score_multiplier_duration = 900
         self.score_multiplier = 2
+        self.mobile_pressed = {'left': False, 'right': False, 'fire': False}
         self.wave_hit     = False
         self.pending_shots_progress = 0
         self._achievement_run_checked = False
@@ -195,6 +199,85 @@ class GameManager:
             pygame.draw.ellipse(self.screen, constants.CYAN,
                                 (x - 10, y - 7, 20, 14), 2)
             pygame.draw.circle(self.screen, constants.WHITE, (x, y), 3)
+
+    def _mobile_button_bounds(self):
+        margin = max(12, min(24, constants.SCREEN_WIDTH // 30))
+        bottom_y = constants.SCREEN_HEIGHT - 18
+        button_h = min(62, max(44, constants.SCREEN_HEIGHT // 10))
+        arrow_w = min(88, max(62, constants.SCREEN_WIDTH // 11))
+        fire_w = min(122, max(88, constants.SCREEN_WIDTH // 8))
+        gap = 12
+        left_w = right_w = arrow_w
+        left_x = margin
+        right_x = left_x + left_w + gap
+        fire_x = max(right_x + right_w + gap, constants.SCREEN_WIDTH - fire_w - margin)
+        fire_rect = pygame.Rect(fire_x, bottom_y - button_h, fire_w, button_h)
+        left_rect = pygame.Rect(left_x, bottom_y - button_h, left_w, button_h)
+        right_rect = pygame.Rect(right_x, bottom_y - button_h, right_w, button_h)
+        return {'left': left_rect, 'right': right_rect, 'fire': fire_rect}
+
+    def _set_mobile_button(self, key, is_pressed, pos=None):
+        if key not in self.mobile_pressed:
+            return
+        if pos is not None:
+            if not self._mobile_button_bounds()[key].collidepoint(pos):
+                return
+        self.mobile_pressed[key] = bool(is_pressed)
+        if key == 'fire' and is_pressed and not self.game_over and not self.paused:
+            self._fire_player()
+
+    def _handle_mobile_inputs(self, event):
+        if not self.mobile_controls:
+            return
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for key, rect in self._mobile_button_bounds().items():
+                if rect.collidepoint(event.pos):
+                    self._set_mobile_button(key, True, event.pos)
+                    return
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            for key in self.mobile_pressed:
+                self.mobile_pressed[key] = False
+            return
+        elif event.type == pygame.FINGERDOWN:
+            x = int(event.x * constants.SCREEN_WIDTH)
+            y = int(event.y * constants.SCREEN_HEIGHT)
+            for key, rect in self._mobile_button_bounds().items():
+                if rect.collidepoint((x, y)):
+                    self._set_mobile_button(key, True, (x, y))
+                    return
+        elif event.type == pygame.FINGERUP:
+            for key in self.mobile_pressed:
+                self.mobile_pressed[key] = False
+
+    def _draw_mobile_button(self, rect, color, border_color, active, icon=None, label=None):
+        shadow = rect.move(3, 4)
+        pygame.draw.rect(self.screen, (5, 8, 18), shadow, border_radius=rect.height // 3)
+        base = color if active else (15, 24, 54)
+        pygame.draw.rect(self.screen, base, rect, border_radius=rect.height // 3)
+        pygame.draw.rect(self.screen, border_color, rect, 2, border_radius=rect.height // 3)
+        inner = rect.inflate(-8, -8)
+        pygame.draw.line(self.screen, (130, 185, 255), (inner.x + 10, inner.y + 3),
+                         (inner.right - 10, inner.y + 3), 2)
+        if icon == 'left':
+            points = [(rect.centerx - 13, rect.centery), (rect.centerx + 10, rect.centery - 13),
+                      (rect.centerx + 10, rect.centery + 13)]
+            pygame.draw.polygon(self.screen, (190, 225, 255), points)
+        elif icon == 'right':
+            points = [(rect.centerx + 13, rect.centery), (rect.centerx - 10, rect.centery - 13),
+                      (rect.centerx - 10, rect.centery + 13)]
+            pygame.draw.polygon(self.screen, (190, 225, 255), points)
+        elif label:
+            text = self.fnt_sm.render(label, True, constants.WHITE)
+            self.screen.blit(text, (rect.centerx - text.get_width() // 2,
+                                    rect.centery - text.get_height() // 2 + 2))
+
+    def _draw_mobile_controls(self):
+        if not self.mobile_controls:
+            return
+        bounds = self._mobile_button_bounds()
+        self._draw_mobile_button(bounds['left'], (35, 85, 190), (85, 155, 255), self.mobile_pressed['left'], icon='left')
+        self._draw_mobile_button(bounds['right'], (35, 85, 190), (85, 155, 255), self.mobile_pressed['right'], icon='right')
+        self._draw_mobile_button(bounds['fire'], (155, 20, 45), (255, 65, 95), self.mobile_pressed['fire'], label='FIRE')
 
     # ── Enemies ───────────────────────────────────────────────────────────────
     def _create_enemies(self):
@@ -370,10 +453,12 @@ class GameManager:
 
         if not self.boss:
             ec = self.fnt_sm.render(f"ENEMIES: {len(self.enemies)}", True, constants.LIGHT_GRAY)
-            self.screen.blit(ec, (12, constants.SCREEN_HEIGHT - 22))
+            enemy_y = constants.SCREEN_HEIGHT - 92 if self.mobile_controls else constants.SCREEN_HEIGHT - 22
+            self.screen.blit(ec, (12, enemy_y))
 
         esc_hint = self.fnt_sm.render("ESC = Pause", True, constants.GRAY)
-        self.screen.blit(esc_hint, (constants.SCREEN_WIDTH - 12 - esc_hint.get_width(), constants.SCREEN_HEIGHT - 22))
+        hint_y = constants.SCREEN_HEIGHT - 92 if self.mobile_controls else constants.SCREEN_HEIGHT - 22
+        self.screen.blit(esc_hint, (constants.SCREEN_WIDTH - 12 - esc_hint.get_width(), hint_y))
 
         if self.combo > 2:
             pulse = abs((self.frame % 40) - 20) / 20
@@ -453,8 +538,11 @@ class GameManager:
 
         while running:
             self.frame += 1
+            self.settings.load()
+            self.mobile_controls = bool(self.settings.get('mobile_controls', True))
 
             for ev in pygame.event.get():
+                self._handle_mobile_inputs(ev)
                 if ev.type == pygame.QUIT:
                     running = False; self._save_stats()
                 elif ev.type == pygame.VIDEORESIZE:
@@ -497,7 +585,14 @@ class GameManager:
                 if not self.paused:
                     # Input
                     keys = pygame.key.get_pressed()
-                    if keys[pygame.K_LEFT]  or keys[pygame.K_a]: self.player.move(-1)
+                    if self.mobile_controls:
+                        if self.mobile_pressed['left'] and not self.mobile_pressed['right']:
+                            self.player.move(-1)
+                        if self.mobile_pressed['right'] and not self.mobile_pressed['left']:
+                            self.player.move(1)
+                        if self.mobile_pressed['fire']:
+                            self._fire_player()
+                    if keys[pygame.K_LEFT] or keys[pygame.K_a]: self.player.move(-1)
                     if keys[pygame.K_RIGHT] or keys[pygame.K_d]: self.player.move(1)
                     if keys[pygame.K_SPACE]:
                         self._fire_player()
@@ -568,6 +663,7 @@ class GameManager:
                 self._draw_side_drones()
                 self.player.draw(self.screen)
                 self._draw_ui()
+                self._draw_mobile_controls()
 
                 # Pause overlay
                 if self.paused and self.pause_menu:

@@ -6,7 +6,7 @@ from pathlib import Path
 DEFAULT_SETTINGS = {
     'sfx_volume': 0.65,
     'music_volume': 0.35,
-    'mobile_controls': False,
+    'mobile_controls': True,
 }
 
 
